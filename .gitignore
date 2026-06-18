@@ -38,11 +38,13 @@ data/audio/*
 data/subtitles/*
 data/renders/*
 data/cache/*
+data/assets/*
 !data/clips/.gitkeep
 !data/audio/.gitkeep
 !data/subtitles/.gitkeep
 !data/renders/.gitkeep
 !data/cache/.gitkeep
+!data/assets/.gitkeep
 
 # Logs
 *.log

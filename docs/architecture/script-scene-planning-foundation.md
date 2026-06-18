@@ -91,6 +91,14 @@ This phase builds on code that already exists:
 
 - Asset routes return metadata and/or parsed content responses.
 - Do not implement raw byte streaming/download yet.
+- Precedent (script content): script draft routes (`POST` and `/latest`) return
+  metadata only, while the scene table `/latest` route returns parsed scenes
+  because `GetLatestSceneTable` parses them in the application layer. If decoded
+  script text is later exposed over HTTP, add it through an application read
+  model (for example a `GetLatestScript` returning an `(asset, text)` bundle,
+  mirroring the `SceneTable` read model) rather than decoding bytes in the route.
+  Decoding in the route would push serialization/content-loading into the API
+  layer and violate D4.
 
 ### D7. Asset creation and lifecycle transition
 
@@ -217,7 +225,7 @@ order.
 ### Slice 4: Script draft use-cases
 
 - **Goal:** Add `CreateScriptDraft` (caller supplies the draft text; no LLM) and
-  `GetLatestScript` / `ListScriptDrafts`, composing `RunRepository`,
+  `GetLatestScriptDraft` / `ListScriptDrafts`, composing `RunRepository`,
   `StoragePort`, and `VersionedAssetRepository` and applying the D7 script rule.
 - **Files likely to change:**
   - `backend/app/application/use_cases/script_assets.py` (new; UTF-8 text<->bytes

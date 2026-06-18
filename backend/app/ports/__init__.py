@@ -7,7 +7,12 @@ from backend.app.ports.providers import (
     SubtitleBuilder,
     TTSProvider,
 )
-from backend.app.ports.repositories import JobQueuePort, RunRepository, StoragePort
+from backend.app.ports.repositories import (
+    JobQueuePort,
+    RunRepository,
+    StoragePort,
+    VersionedAssetRepository,
+)
 
 __all__ = [
     "JobQueuePort",
@@ -18,4 +23,5 @@ __all__ = [
     "StoragePort",
     "SubtitleBuilder",
     "TTSProvider",
+    "VersionedAssetRepository",
 ]

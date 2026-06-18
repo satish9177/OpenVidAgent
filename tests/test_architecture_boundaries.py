@@ -11,7 +11,13 @@ from backend.app.application.use_cases import (
     ApproveScenes,
     ApproveScript,
     CreateRun,
+    CreateSceneTable,
+    CreateScriptDraft,
+    GetLatestSceneTable,
+    GetLatestScriptDraft,
     GetRun,
+    ListSceneTables,
+    ListScriptDrafts,
     MarkFailed,
     MarkScenesReady,
     MarkScriptReady,
@@ -21,8 +27,10 @@ from backend.app.ports import (
     Renderer,
     RunRepository,
     StockProvider,
+    StoragePort,
     SubtitleBuilder,
     TTSProvider,
+    VersionedAssetRepository,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -93,6 +101,47 @@ def test_run_use_cases_depend_on_run_repository_port() -> None:
     for use_case in use_cases:
         hints = get_type_hints(use_case.__init__)
         assert hints["repository"] is RunRepository
+
+
+def test_asset_ports_live_in_ports() -> None:
+    for port in (VersionedAssetRepository, StoragePort):
+        assert (
+            inspect.getmodule(port).__name__ == "backend.app.ports.repositories"
+        )
+
+
+def test_asset_use_cases_depend_only_on_port_types() -> None:
+    expected: dict[type, dict[str, type]] = {
+        CreateScriptDraft: {
+            "run_repository": RunRepository,
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+        },
+        ListScriptDrafts: {"asset_repository": VersionedAssetRepository},
+        GetLatestScriptDraft: {"asset_repository": VersionedAssetRepository},
+        CreateSceneTable: {
+            "run_repository": RunRepository,
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+        },
+        ListSceneTables: {"asset_repository": VersionedAssetRepository},
+        GetLatestSceneTable: {
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+        },
+    }
+
+    for use_case, port_hints in expected.items():
+        hints = get_type_hints(use_case.__init__)
+        for name, port in port_hints.items():
+            assert hints[name] is port, (use_case.__name__, name)
+
+
+def test_assets_route_imports_use_cases_not_infrastructure() -> None:
+    imports = _imports_for(APP_ROOT / "api" / "assets.py")
+
+    assert _matching_imports(imports, {"backend.app.application"})
+    assert not _matching_imports(imports, {"backend.app.infrastructure"})
 
 
 def _python_files(directory: Path) -> list[Path]:

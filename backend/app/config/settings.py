@@ -14,6 +14,7 @@ class Settings:
     environment: str = "local"
     debug: bool = False
     database_path: str = "data/openvidagent.sqlite"
+    storage_root: str = "data/assets"
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
@@ -25,6 +26,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         database_path=values.get(
             "OPENVIDAGENT_DATABASE_PATH", "data/openvidagent.sqlite"
         ),
+        storage_root=values.get("OPENVIDAGENT_STORAGE_ROOT", "data/assets"),
     )
 
 
