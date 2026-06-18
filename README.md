@@ -20,3 +20,7 @@ The code is split into stable layers:
 This avoids a monolithic pipeline by keeping orchestration separate from provider implementations. A use-case can ask an `LLMProvider` for a script, a `StockProvider` for clips, a `TTSProvider` for voice, a `SubtitleBuilder` for captions, and a `Renderer` for final output without importing concrete SDKs or tools. Providers stay replaceable plugins behind interfaces, jobs remain durable units of work, assets are versioned, and the renderer receives an explicit `RenderSpec` instead of hidden shared state.
 
 See [docs/architecture/high-level-design.md](docs/architecture/high-level-design.md) and [docs/architecture/solid-design-rules.md](docs/architecture/solid-design-rules.md).
+
+### Architecture Tests
+
+The `tests/` suite includes source-level boundary checks so the domain stays framework-free, application use-cases do not import concrete infrastructure, and API routes call application use-cases instead of providers directly. Fake providers in `tests/fakes/` implement the production ports to prove integrations can be substituted before real provider plugins are added.
