@@ -13,6 +13,7 @@ class Settings:
     app_name: str = "OpenVidAgent"
     environment: str = "local"
     debug: bool = False
+    database_path: str = "data/openvidagent.sqlite"
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
@@ -21,6 +22,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         app_name=values.get("OPENVIDAGENT_APP_NAME", "OpenVidAgent"),
         environment=values.get("OPENVIDAGENT_ENVIRONMENT", "local"),
         debug=_read_bool(values.get("OPENVIDAGENT_DEBUG")),
+        database_path=values.get(
+            "OPENVIDAGENT_DATABASE_PATH", "data/openvidagent.sqlite"
+        ),
     )
 
 
