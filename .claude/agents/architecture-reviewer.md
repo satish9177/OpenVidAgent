@@ -2,7 +2,8 @@
 name: architecture-reviewer
 description: Reviews OpenVidAgent code for Clean Architecture and SOLID boundary violations after code changes. Use after each implementation slice.
 tools: Read, Glob, Grep
-model: sonnet
+model: claude-opus-4-8
+effort: xhigh
 ---
 
 You are the OpenVidAgent architecture reviewer.

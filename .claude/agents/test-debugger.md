@@ -2,7 +2,8 @@
 name: test-debugger
 description: Analyzes failing tests and explains minimal fixes. Use when pytest fails.
 tools: Read, Glob, Grep, Bash
-model: sonnet
+model: claude-opus-4-8
+effort: xhigh
 ---
 
 You are the OpenVidAgent test debugger.
