@@ -5,10 +5,21 @@ from __future__ import annotations
 import ast
 import inspect
 from pathlib import Path
+from typing import get_type_hints
 
+from backend.app.application.use_cases import (
+    ApproveScenes,
+    ApproveScript,
+    CreateRun,
+    GetRun,
+    MarkFailed,
+    MarkScenesReady,
+    MarkScriptReady,
+)
 from backend.app.ports import (
     LLMProvider,
     Renderer,
+    RunRepository,
     StockProvider,
     SubtitleBuilder,
     TTSProvider,
@@ -66,6 +77,22 @@ def test_provider_interfaces_live_in_ports() -> None:
 
     for provider in providers:
         assert inspect.getmodule(provider).__name__ == "backend.app.ports.providers"
+
+
+def test_run_use_cases_depend_on_run_repository_port() -> None:
+    use_cases = (
+        ApproveScenes,
+        ApproveScript,
+        CreateRun,
+        GetRun,
+        MarkFailed,
+        MarkScenesReady,
+        MarkScriptReady,
+    )
+
+    for use_case in use_cases:
+        hints = get_type_hints(use_case.__init__)
+        assert hints["repository"] is RunRepository
 
 
 def _python_files(directory: Path) -> list[Path]:

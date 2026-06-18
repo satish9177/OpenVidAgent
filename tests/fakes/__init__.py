@@ -7,6 +7,7 @@ from tests.fakes.providers import (
     FakeSubtitleBuilder,
     FakeTTSProvider,
 )
+from tests.fakes.repositories import InMemoryRunRepository
 
 __all__ = [
     "FakeLLMProvider",
@@ -14,4 +15,5 @@ __all__ = [
     "FakeStockProvider",
     "FakeSubtitleBuilder",
     "FakeTTSProvider",
+    "InMemoryRunRepository",
 ]
