@@ -17,3 +17,7 @@ dev = [
 addopts = "-q"
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["backend*"]
+exclude = ["data*"]

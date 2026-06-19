@@ -2,6 +2,49 @@
 
 OpenVidAgent is an open-source, local-first AI video agent.
 
+## Development Setup
+
+OpenVidAgent declares support for Python 3.11 and newer. Windows local development is currently standardized on Python 3.12 because the test suite is validated there.
+
+Check the available Python interpreters:
+
+```powershell
+py -0p
+py -3.12 --version
+```
+
+If the Python launcher cannot find Python 3.12, install Python 3.12 from python.org and check the common per-user install path:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" --version
+```
+
+If `.venv` points at a missing Python install, recreate it instead of repairing it in place:
+
+```powershell
+Remove-Item -Recurse -Force .\.venv
+py -3.12 -m venv .venv
+```
+
+If `py -3.12` is not available but the per-user Python install exists, create the venv with the explicit interpreter path:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m venv .venv
+```
+
+Install runtime and test dependencies from the project metadata:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+```
+
+Run the test suite with the venv interpreter:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
 ## Architecture
 
 The V1 architecture is a small Clean Architecture skeleton for the flow:
