@@ -57,7 +57,8 @@ The domain layer does not import FastAPI, databases, HTTP clients, SDKs, or conc
 
 Providers are plugins behind interfaces:
 
-- `LLMProvider`
+- `ScriptDraftGenerator`
+- `SceneTablePlanner`
 - `StockProvider`
 - `TTSProvider`
 - `SubtitleBuilder`

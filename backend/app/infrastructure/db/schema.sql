@@ -1,6 +1,8 @@
 CREATE TABLE IF NOT EXISTS runs (
     run_id TEXT PRIMARY KEY,
     prompt TEXT NOT NULL,
+    title TEXT,
+    language TEXT NOT NULL DEFAULT 'en',
     status TEXT NOT NULL,
     script TEXT,
     approved_script TEXT,

@@ -1,8 +1,9 @@
 """Fake provider implementations for tests."""
 
 from tests.fakes.providers import (
-    FakeLLMProvider,
     FakeRenderer,
+    FakeSceneTablePlanner,
+    FakeScriptDraftGenerator,
     FakeStockProvider,
     FakeSubtitleBuilder,
     FakeTTSProvider,
@@ -14,8 +15,9 @@ from tests.fakes.repositories import (
 from tests.fakes.storage import InMemoryStorage
 
 __all__ = [
-    "FakeLLMProvider",
     "FakeRenderer",
+    "FakeSceneTablePlanner",
+    "FakeScriptDraftGenerator",
     "FakeStockProvider",
     "FakeSubtitleBuilder",
     "FakeTTSProvider",

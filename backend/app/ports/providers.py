@@ -9,12 +9,17 @@ from backend.app.domain import RenderSpec, SceneSpec, VersionedAsset
 
 
 @runtime_checkable
-class LLMProvider(Protocol):
-    def draft_script(self, prompt: str) -> str:
+class ScriptDraftGenerator(Protocol):
+    def generate(self, prompt: str, language: str) -> str:
         """Create an editable script draft from a user prompt."""
         ...
 
-    def build_scene_table(self, approved_script: str) -> Sequence[SceneSpec]:
+
+@runtime_checkable
+class SceneTablePlanner(Protocol):
+    def plan(
+        self, approved_script: str, language: str
+    ) -> Sequence[SceneSpec]:
         """Turn an approved script into scene specs."""
         ...
 

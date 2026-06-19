@@ -17,7 +17,9 @@ class SQLiteRunRepository(RunRepository):
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT run_id, prompt, status, script, approved_script, failure_reason
+                SELECT
+                    run_id, prompt, title, language, status, script,
+                    approved_script, failure_reason
                 FROM runs
                 WHERE run_id = ?
                 """,
@@ -35,14 +37,18 @@ class SQLiteRunRepository(RunRepository):
                 INSERT INTO runs (
                     run_id,
                     prompt,
+                    title,
+                    language,
                     status,
                     script,
                     approved_script,
                     failure_reason
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(run_id) DO UPDATE SET
                     prompt = excluded.prompt,
+                    title = excluded.title,
+                    language = excluded.language,
                     status = excluded.status,
                     script = excluded.script,
                     approved_script = excluded.approved_script,
@@ -51,6 +57,8 @@ class SQLiteRunRepository(RunRepository):
                 (
                     run.run_id,
                     run.prompt,
+                    run.title,
+                    run.language,
                     run.status.value,
                     run.script,
                     run.approved_script,
@@ -69,6 +77,8 @@ def _row_to_run(row: sqlite3.Row) -> Run:
     return Run(
         run_id=row["run_id"],
         prompt=row["prompt"],
+        title=row["title"],
+        language=row["language"],
         status=RunStatus(row["status"]),
         script=row["script"],
         approved_script=row["approved_script"],

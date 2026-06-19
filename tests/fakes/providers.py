@@ -6,19 +6,22 @@ from collections.abc import Sequence
 
 from backend.app.domain import AssetKind, RenderSpec, SceneSpec, VersionedAsset
 from backend.app.ports import (
-    LLMProvider,
     Renderer,
+    SceneTablePlanner,
+    ScriptDraftGenerator,
     StockProvider,
     SubtitleBuilder,
     TTSProvider,
 )
 
 
-class FakeLLMProvider(LLMProvider):
-    def draft_script(self, prompt: str) -> str:
+class FakeScriptDraftGenerator(ScriptDraftGenerator):
+    def generate(self, prompt: str, language: str) -> str:
         return f"Draft script for: {prompt}"
 
-    def build_scene_table(self, approved_script: str) -> Sequence[SceneSpec]:
+
+class FakeSceneTablePlanner(SceneTablePlanner):
+    def plan(self, approved_script: str, language: str) -> Sequence[SceneSpec]:
         return (
             SceneSpec(
                 scene_id="scene-1",

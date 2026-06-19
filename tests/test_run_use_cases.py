@@ -62,3 +62,24 @@ def test_mutating_use_case_raises_when_run_is_missing() -> None:
 
     with pytest.raises(RunNotFoundError, match="Run 'missing' was not found"):
         MarkScriptReady(repository).execute("missing", "script")
+
+
+def test_create_run_sets_title_and_language() -> None:
+    repository = InMemoryRunRepository()
+
+    run = CreateRun(repository, run_id_factory=lambda: "run-1").execute(
+        "prompt", title="My Video", language="es"
+    )
+
+    assert run.title == "My Video"
+    assert run.language == "es"
+    assert repository.get("run-1") == run
+
+
+def test_create_run_defaults_title_none_and_language_en() -> None:
+    repository = InMemoryRunRepository()
+
+    run = CreateRun(repository, run_id_factory=lambda: "run-1").execute("prompt")
+
+    assert run.title is None
+    assert run.language == "en"

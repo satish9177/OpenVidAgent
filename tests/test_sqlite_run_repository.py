@@ -46,3 +46,21 @@ def test_sqlite_run_repository_satisfies_run_repository_port(tmp_path: Path) -> 
     repository = SQLiteRunRepository(tmp_path / "openvidagent.sqlite")
 
     assert isinstance(repository, RunRepository)
+
+
+def test_sqlite_run_repository_round_trips_title_and_language(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "openvidagent.sqlite"
+    initialize_database(database_path)
+    repository = SQLiteRunRepository(database_path)
+
+    run = Run(run_id="run-1", prompt="prompt", title="My Video", language="es")
+    repository.save(run)
+
+    stored = repository.get("run-1")
+    assert stored == run
+    assert stored is not None
+    assert stored.prompt == "prompt"
+    assert stored.title == "My Video"
+    assert stored.language == "es"

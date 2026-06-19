@@ -34,6 +34,8 @@ def get_run_repository(request: Request) -> RunRepository:
 
 class CreateRunRequest(BaseModel):
     prompt: str
+    title: str | None = None
+    language: str = "en"
 
 
 class ScriptReadyRequest(BaseModel):
@@ -51,6 +53,8 @@ class MarkFailedRequest(BaseModel):
 class RunResponse(BaseModel):
     run_id: str
     prompt: str
+    title: str | None = None
+    language: str
     status: str
     script: str | None = None
     approved_script: str | None = None
@@ -61,6 +65,8 @@ class RunResponse(BaseModel):
         return cls(
             run_id=run.run_id,
             prompt=run.prompt,
+            title=run.title,
+            language=run.language,
             status=run.status.value,
             script=run.script,
             approved_script=run.approved_script,
@@ -73,7 +79,7 @@ def create_run(
     body: CreateRunRequest,
     repository: RunRepository = Depends(get_run_repository),
 ) -> RunResponse:
-    run = CreateRun(repository).execute(body.prompt)
+    run = CreateRun(repository).execute(body.prompt, body.title, body.language)
     return RunResponse.from_run(run)
 
 

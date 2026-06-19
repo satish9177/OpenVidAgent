@@ -108,3 +108,30 @@ def test_missing_run_returns_404_on_transition() -> None:
     )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_post_runs_echoes_title_and_language() -> None:
+    client = _client()
+
+    response = client.post(
+        "/runs",
+        json={"prompt": "make a video", "title": "My Video", "language": "es"},
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    body = response.json()
+    assert body["prompt"] == "make a video"
+    assert body["title"] == "My Video"
+    assert body["language"] == "es"
+    assert body["status"] == "created"
+
+
+def test_post_runs_without_language_defaults_to_en() -> None:
+    client = _client()
+
+    response = client.post("/runs", json={"prompt": "make a video"})
+
+    assert response.status_code == status.HTTP_201_CREATED
+    body = response.json()
+    assert body["title"] is None
+    assert body["language"] == "en"

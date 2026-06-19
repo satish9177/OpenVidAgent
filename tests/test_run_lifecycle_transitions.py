@@ -81,3 +81,34 @@ def test_run_can_fail_from_active_statuses() -> None:
 def test_invalid_run_transitions_fail_clearly(run: Run, transition: object) -> None:
     with pytest.raises(InvalidRunTransitionError, match="Cannot transition run"):
         transition(run)
+
+
+def test_run_holds_title_and_language() -> None:
+    run = Run(run_id="run-1", prompt="prompt", title="My Video", language="es")
+
+    assert run.title == "My Video"
+    assert run.language == "es"
+
+
+def test_run_defaults_title_to_none_and_language_to_en() -> None:
+    run = Run(run_id="run-1", prompt="prompt")
+
+    assert run.title is None
+    assert run.language == "en"
+
+
+def test_transitions_preserve_title_and_language() -> None:
+    run = Run(run_id="run-1", prompt="prompt", title="My Video", language="es")
+
+    advanced = (
+        run.mark_script_ready("draft")
+        .approve_script("approved")
+        .mark_scenes_ready()
+        .approve_scenes()
+    )
+    assert advanced.title == "My Video"
+    assert advanced.language == "es"
+
+    failed = run.mark_failed("stopped")
+    assert failed.title == "My Video"
+    assert failed.language == "es"

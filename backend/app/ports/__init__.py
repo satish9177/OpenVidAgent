@@ -1,8 +1,9 @@
 """Interfaces owned by the application boundary."""
 
 from backend.app.ports.providers import (
-    LLMProvider,
     Renderer,
+    SceneTablePlanner,
+    ScriptDraftGenerator,
     StockProvider,
     SubtitleBuilder,
     TTSProvider,
@@ -16,9 +17,10 @@ from backend.app.ports.repositories import (
 
 __all__ = [
     "JobQueuePort",
-    "LLMProvider",
     "Renderer",
     "RunRepository",
+    "SceneTablePlanner",
+    "ScriptDraftGenerator",
     "StockProvider",
     "StoragePort",
     "SubtitleBuilder",

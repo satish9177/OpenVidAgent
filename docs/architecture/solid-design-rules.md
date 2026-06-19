@@ -17,7 +17,7 @@ These rules keep OpenVidAgent small, local-first, and easy to extend.
 
 ## Liskov Substitution
 
-- Any implementation of `LLMProvider`, `StockProvider`, `TTSProvider`, `SubtitleBuilder`, or `Renderer` must be replaceable without changing use-case code.
+- Any implementation of `ScriptDraftGenerator`, `SceneTablePlanner`, `StockProvider`, `TTSProvider`, `SubtitleBuilder`, or `Renderer` must be replaceable without changing use-case code.
 - Provider methods should return domain objects, not provider-specific response types.
 
 ## Interface Segregation

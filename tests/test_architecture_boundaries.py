@@ -23,9 +23,10 @@ from backend.app.application.use_cases import (
     MarkScriptReady,
 )
 from backend.app.ports import (
-    LLMProvider,
     Renderer,
     RunRepository,
+    SceneTablePlanner,
+    ScriptDraftGenerator,
     StockProvider,
     StoragePort,
     SubtitleBuilder,
@@ -81,7 +82,14 @@ def test_api_routes_depend_on_use_cases_not_infrastructure() -> None:
 
 
 def test_provider_interfaces_live_in_ports() -> None:
-    providers = (LLMProvider, StockProvider, TTSProvider, SubtitleBuilder, Renderer)
+    providers = (
+        ScriptDraftGenerator,
+        SceneTablePlanner,
+        StockProvider,
+        TTSProvider,
+        SubtitleBuilder,
+        Renderer,
+    )
 
     for provider in providers:
         assert inspect.getmodule(provider).__name__ == "backend.app.ports.providers"

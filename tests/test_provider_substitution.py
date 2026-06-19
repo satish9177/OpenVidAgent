@@ -1,14 +1,16 @@
 from backend.app.domain import AssetKind, RenderSpec
 from backend.app.ports import (
-    LLMProvider,
     Renderer,
+    SceneTablePlanner,
+    ScriptDraftGenerator,
     StockProvider,
     SubtitleBuilder,
     TTSProvider,
 )
 from tests.fakes import (
-    FakeLLMProvider,
     FakeRenderer,
+    FakeSceneTablePlanner,
+    FakeScriptDraftGenerator,
     FakeStockProvider,
     FakeSubtitleBuilder,
     FakeTTSProvider,
@@ -16,20 +18,22 @@ from tests.fakes import (
 
 
 def test_fake_providers_are_substitutable_through_ports() -> None:
-    llm: LLMProvider = FakeLLMProvider()
+    script_generator: ScriptDraftGenerator = FakeScriptDraftGenerator()
+    scene_planner: SceneTablePlanner = FakeSceneTablePlanner()
     stock: StockProvider = FakeStockProvider()
     tts: TTSProvider = FakeTTSProvider()
     subtitles: SubtitleBuilder = FakeSubtitleBuilder()
     renderer: Renderer = FakeRenderer()
 
-    assert isinstance(llm, LLMProvider)
+    assert isinstance(script_generator, ScriptDraftGenerator)
+    assert isinstance(scene_planner, SceneTablePlanner)
     assert isinstance(stock, StockProvider)
     assert isinstance(tts, TTSProvider)
     assert isinstance(subtitles, SubtitleBuilder)
     assert isinstance(renderer, Renderer)
 
-    script = llm.draft_script("explain local-first video agents")
-    scenes = tuple(llm.build_scene_table(script))
+    script = script_generator.generate("explain local-first video agents", "en")
+    scenes = tuple(scene_planner.plan(script, "en"))
     clips = tuple(stock.find_clips(scenes[0]))
     voice = tts.synthesize(script)
     subtitle_asset = subtitles.build(script, voice)

@@ -93,6 +93,8 @@ class Job:
 class Run:
     run_id: str
     prompt: str
+    title: str | None = None
+    language: str = "en"
     status: RunStatus = RunStatus.CREATED
     script: str | None = None
     approved_script: str | None = None
@@ -127,6 +129,8 @@ class Run:
         return Run(
             run_id=self.run_id,
             prompt=self.prompt,
+            title=self.title,
+            language=self.language,
             status=next_status,
             script=_get_change(changes, "script", self.script),
             approved_script=_get_change(

@@ -22,8 +22,18 @@ class CreateRun:
         self._repository = repository
         self._run_id_factory = run_id_factory or _new_run_id
 
-    def execute(self, prompt: str) -> Run:
-        run = Run(run_id=self._run_id_factory(), prompt=prompt)
+    def execute(
+        self,
+        prompt: str,
+        title: str | None = None,
+        language: str = "en",
+    ) -> Run:
+        run = Run(
+            run_id=self._run_id_factory(),
+            prompt=prompt,
+            title=title,
+            language=language,
+        )
         self._repository.save(run)
         return run
 
