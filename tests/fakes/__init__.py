@@ -2,6 +2,7 @@
 
 from tests.fakes.providers import (
     FakeClipRetrievalProvider,
+    FakeClipSelector,
     FakeRenderer,
     FakeSceneTablePlanner,
     FakeScriptDraftGenerator,
@@ -18,6 +19,7 @@ from tests.fakes.storage import InMemoryStorage
 
 __all__ = [
     "FakeClipRetrievalProvider",
+    "FakeClipSelector",
     "FakeRenderer",
     "FakeSceneTablePlanner",
     "FakeScriptDraftGenerator",

@@ -156,3 +156,44 @@ def test_prompt_to_scenes_happy_path_advances_through_every_status() -> None:
     assert first_candidate["width"] == 1920
     assert first_candidate["height"] == 1080
     assert client.get(f"/runs/{run_id}").json()["status"] == "scenes_approved"
+
+    # 11. Select clips -> asset-only; run still stays `scenes_approved` and no
+    # render/download stage is used.
+    selected = client.post(f"/runs/{run_id}/selected-clips/select")
+    assert selected.status_code == status.HTTP_201_CREATED
+    selected_body = selected.json()
+    assert selected_body["kind"] == "selected_clips"
+    assert selected_body["version"] == 1
+    assert selected_body["metadata"]["source"] == "selected"
+    assert client.get(f"/runs/{run_id}").json()["status"] == "scenes_approved"
+
+    # 12. The selected clip set is retrievable as parsed metadata-only rows.
+    # The deterministic selector copies memory URLs from the candidates and
+    # records why each first-per-scene/query candidate was chosen.
+    latest_selected = client.get(f"/runs/{run_id}/selected-clips/latest")
+    assert latest_selected.status_code == status.HTTP_200_OK
+    latest_selected_body = latest_selected.json()
+    assert latest_selected_body["asset"]["version"] == 1
+    assert latest_selected_body["asset"]["metadata"]["source"] == "selected"
+    assert latest_selected_body["selected_clips"], "expected selected clips"
+    selected_scene_ids = {
+        clip["scene_id"] for clip in latest_selected_body["selected_clips"]
+    }
+    assert selected_scene_ids.issubset(scene_ids)
+    first_selected = latest_selected_body["selected_clips"][0]
+    assert first_selected["scene_id"]
+    assert first_selected["query_text"]
+    assert first_selected["provider"] == "stub"
+    assert first_selected["provider_clip_id"]
+    assert first_selected["title"]
+    assert first_selected["preview_url"].startswith("memory://")
+    assert first_selected["source_url"].startswith("memory://")
+    assert first_selected["duration_seconds"] > 0
+    assert first_selected["width"] == 1920
+    assert first_selected["height"] == 1080
+    assert first_selected["selection_reason"] == (
+        "first_candidate_for_scene_query"
+    )
+    final_run = client.get(f"/runs/{run_id}").json()
+    assert final_run["status"] == "scenes_approved"
+    assert final_run["status"] != "rendered"

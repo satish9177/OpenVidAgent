@@ -14,6 +14,7 @@ class AssetKind(str, Enum):
     SCENE_TABLE = "scene_table"
     STOCK_PLAN = "stock_plan"
     CLIP_CANDIDATES = "clip_candidates"
+    SELECTED_CLIPS = "selected_clips"
     STOCK_CLIP = "stock_clip"
     VOICE = "voice"
     SUBTITLE = "subtitle"
@@ -95,6 +96,21 @@ class ClipCandidate:
     duration_seconds: float
     width: int
     height: int
+
+
+@dataclass(frozen=True)
+class SelectedClip:
+    scene_id: str
+    query_text: str
+    provider: str
+    provider_clip_id: str
+    title: str
+    preview_url: str
+    source_url: str
+    duration_seconds: float
+    width: int
+    height: int
+    selection_reason: str
 
 
 @dataclass(frozen=True)

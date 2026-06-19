@@ -2,6 +2,7 @@
 
 from backend.app.ports.providers import (
     ClipRetrievalProvider,
+    ClipSelector,
     Renderer,
     SceneTablePlanner,
     ScriptDraftGenerator,
@@ -19,6 +20,7 @@ from backend.app.ports.repositories import (
 
 __all__ = [
     "ClipRetrievalProvider",
+    "ClipSelector",
     "JobQueuePort",
     "Renderer",
     "RunRepository",

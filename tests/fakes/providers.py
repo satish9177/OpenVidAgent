@@ -9,11 +9,13 @@ from backend.app.domain import (
     ClipCandidate,
     RenderSpec,
     SceneSpec,
+    SelectedClip,
     StockQuerySpec,
     VersionedAsset,
 )
 from backend.app.ports import (
     ClipRetrievalProvider,
+    ClipSelector,
     Renderer,
     SceneTablePlanner,
     ScriptDraftGenerator,
@@ -95,6 +97,42 @@ class FakeClipRetrievalProvider(ClipRetrievalProvider):
                 width=1280,
                 height=720,
             ),
+        )
+
+
+class FakeClipSelector(ClipSelector):
+    def __init__(
+        self,
+        selected_clips: Sequence[SelectedClip] | None = None,
+    ) -> None:
+        self._selected_clips = (
+            tuple(selected_clips) if selected_clips is not None else None
+        )
+        self.calls: list[tuple[ClipCandidate, ...]] = []
+
+    def select(
+        self, candidates: Sequence[ClipCandidate]
+    ) -> Sequence[SelectedClip]:
+        captured = tuple(candidates)
+        self.calls.append(captured)
+        if self._selected_clips is not None:
+            return self._selected_clips
+
+        return tuple(
+            SelectedClip(
+                scene_id=candidate.scene_id,
+                query_text=candidate.query_text,
+                provider=candidate.provider,
+                provider_clip_id=candidate.provider_clip_id,
+                title=candidate.title,
+                preview_url=candidate.preview_url,
+                source_url=candidate.source_url,
+                duration_seconds=candidate.duration_seconds,
+                width=candidate.width,
+                height=candidate.height,
+                selection_reason="fake_selection",
+            )
+            for candidate in captured
         )
 
 
