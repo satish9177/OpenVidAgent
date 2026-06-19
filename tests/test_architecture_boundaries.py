@@ -29,6 +29,7 @@ from backend.app.ports import (
     RunRepository,
     SceneTablePlanner,
     ScriptDraftGenerator,
+    StockClipPlanner,
     StockProvider,
     StoragePort,
     SubtitleBuilder,
@@ -97,6 +98,7 @@ def test_provider_interfaces_live_in_ports() -> None:
     providers = (
         ScriptDraftGenerator,
         SceneTablePlanner,
+        StockClipPlanner,
         StockProvider,
         TTSProvider,
         SubtitleBuilder,

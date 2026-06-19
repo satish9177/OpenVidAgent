@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
-from backend.app.domain import RenderSpec, SceneSpec, VersionedAsset
+from backend.app.domain import RenderSpec, SceneSpec, StockQuerySpec, VersionedAsset
 
 
 @runtime_checkable
@@ -28,6 +28,15 @@ class SceneTablePlanner(Protocol):
 class StockProvider(Protocol):
     def find_clips(self, scene: SceneSpec) -> Sequence[VersionedAsset]:
         """Find versioned stock clips for a scene."""
+        ...
+
+
+@runtime_checkable
+class StockClipPlanner(Protocol):
+    def plan_stock_clips(
+        self, scenes: Sequence[SceneSpec], language: str
+    ) -> Sequence[StockQuerySpec]:
+        """Plan stock clip search queries for approved scenes."""
         ...
 
 
