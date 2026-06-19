@@ -26,12 +26,14 @@ from backend.app.infrastructure.db import (
 from backend.app.infrastructure.generation import (
     EchoScriptDraftGenerator,
     StubSceneTablePlanner,
+    StubStockClipPlanner,
 )
 from backend.app.infrastructure.storage import LocalFilesystemStorage
 from backend.app.ports import (
     RunRepository,
     SceneTablePlanner,
     ScriptDraftGenerator,
+    StockClipPlanner,
     StoragePort,
     VersionedAssetRepository,
 )
@@ -45,6 +47,7 @@ def create_app(
     storage: StoragePort | None = None,
     script_generator: ScriptDraftGenerator | None = None,
     scene_planner: SceneTablePlanner | None = None,
+    stock_planner: StockClipPlanner | None = None,
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
 
@@ -70,6 +73,8 @@ def create_app(
         script_generator = EchoScriptDraftGenerator()
     if scene_planner is None:
         scene_planner = StubSceneTablePlanner()
+    if stock_planner is None:
+        stock_planner = StubStockClipPlanner()
 
     lifespan = None
     if needs_database or needs_storage_root:
@@ -94,6 +99,7 @@ def create_app(
     app.state.storage = storage
     app.state.script_generator = script_generator
     app.state.scene_planner = scene_planner
+    app.state.stock_planner = stock_planner
     app.include_router(health_router)
     app.include_router(runs_router)
     app.include_router(assets_router)

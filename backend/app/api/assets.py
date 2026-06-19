@@ -15,19 +15,25 @@ from pydantic import BaseModel
 from backend.app.application.use_cases import (
     CreateSceneTable,
     CreateScriptDraft,
+    CreateStockPlan,
     GenerateSceneTable,
     GenerateScriptDraft,
+    GenerateStockPlan,
     GetLatestSceneTable,
     GetLatestScriptDraft,
+    GetLatestStockPlan,
     ListSceneTables,
     ListScriptDrafts,
+    ListStockPlans,
     SceneTable,
+    StockPlan,
 )
-from backend.app.domain import SceneSpec, VersionedAsset
+from backend.app.domain import SceneSpec, StockQuerySpec, VersionedAsset
 from backend.app.ports import (
     RunRepository,
     SceneTablePlanner,
     ScriptDraftGenerator,
+    StockClipPlanner,
     StoragePort,
     VersionedAssetRepository,
 )
@@ -62,6 +68,11 @@ def get_scene_planner(request: Request) -> SceneTablePlanner:
     return request.app.state.scene_planner
 
 
+def get_stock_planner(request: Request) -> StockClipPlanner:
+    """Resolve the stock-clip planner wired at composition time."""
+    return request.app.state.stock_planner
+
+
 class CreateScriptDraftRequest(BaseModel):
     text: str
 
@@ -94,6 +105,33 @@ class CreateSceneTableRequest(BaseModel):
     scenes: list[SceneSpecModel]
 
 
+class StockQuerySpecModel(BaseModel):
+    scene_id: str
+    query: str
+    visual_intent: str
+    duration_seconds: float
+    provider_hint: str | None = None
+
+    def to_domain(self) -> StockQuerySpec:
+        return StockQuerySpec(
+            scene_id=self.scene_id,
+            query=self.query,
+            visual_intent=self.visual_intent,
+            duration_seconds=self.duration_seconds,
+            provider_hint=self.provider_hint,
+        )
+
+    @classmethod
+    def from_domain(cls, query: StockQuerySpec) -> "StockQuerySpecModel":
+        return cls(
+            scene_id=query.scene_id,
+            query=query.query,
+            visual_intent=query.visual_intent,
+            duration_seconds=query.duration_seconds,
+            provider_hint=query.provider_hint,
+        )
+
+
 class AssetResponse(BaseModel):
     asset_id: str
     kind: str
@@ -121,6 +159,21 @@ class SceneTableResponse(BaseModel):
         return cls(
             asset=AssetResponse.from_asset(table.asset),
             scenes=[SceneSpecModel.from_domain(scene) for scene in table.scenes],
+        )
+
+
+class StockPlanResponse(BaseModel):
+    asset: AssetResponse
+    queries: list[StockQuerySpecModel]
+
+    @classmethod
+    def from_stock_plan(cls, plan: StockPlan) -> "StockPlanResponse":
+        return cls(
+            asset=AssetResponse.from_asset(plan.asset),
+            queries=[
+                StockQuerySpecModel.from_domain(query)
+                for query in plan.queries
+            ],
         )
 
 
@@ -257,3 +310,53 @@ def get_latest_scene_table(
 ) -> SceneTableResponse:
     table = GetLatestSceneTable(asset_repository, storage).execute(run_id)
     return SceneTableResponse.from_scene_table(table)
+
+
+@router.post(
+    "/{run_id}/stock-plans/generate",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AssetResponse,
+)
+def generate_stock_plan(
+    run_id: str,
+    run_repository: RunRepository = Depends(get_run_repository),
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+    stock_planner: StockClipPlanner = Depends(get_stock_planner),
+) -> AssetResponse:
+    create_stock_plan = CreateStockPlan(
+        run_repository, asset_repository, storage
+    )
+    get_latest_scene_table = GetLatestSceneTable(asset_repository, storage)
+    asset = GenerateStockPlan(
+        run_repository,
+        stock_planner,
+        get_latest_scene_table,
+        create_stock_plan,
+    ).execute(run_id)
+    return AssetResponse.from_asset(asset)
+
+
+@router.get("/{run_id}/stock-plans", response_model=list[AssetResponse])
+def list_stock_plans(
+    run_id: str,
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+) -> list[AssetResponse]:
+    assets = ListStockPlans(asset_repository).execute(run_id)
+    return [AssetResponse.from_asset(asset) for asset in assets]
+
+
+@router.get("/{run_id}/stock-plans/latest", response_model=StockPlanResponse)
+def get_latest_stock_plan(
+    run_id: str,
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+) -> StockPlanResponse:
+    plan = GetLatestStockPlan(asset_repository, storage).execute(run_id)
+    return StockPlanResponse.from_stock_plan(plan)
