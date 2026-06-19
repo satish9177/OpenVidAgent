@@ -5,12 +5,17 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from backend.app.domain import SceneSpec
+from backend.app.domain import SceneSpec, StockQuerySpec
 from backend.app.infrastructure.generation import (
     EchoScriptDraftGenerator,
     StubSceneTablePlanner,
+    StubStockClipPlanner,
 )
-from backend.app.ports import SceneTablePlanner, ScriptDraftGenerator
+from backend.app.ports import (
+    SceneTablePlanner,
+    ScriptDraftGenerator,
+    StockClipPlanner,
+)
 
 GENERATION_DIR = (
     Path(__file__).resolve().parents[1]
@@ -27,6 +32,10 @@ def test_echo_generator_implements_port() -> None:
 
 def test_stub_planner_implements_port() -> None:
     assert isinstance(StubSceneTablePlanner(), SceneTablePlanner)
+
+
+def test_stub_stock_clip_planner_implements_port() -> None:
+    assert isinstance(StubStockClipPlanner(), StockClipPlanner)
 
 
 def test_echo_generator_is_deterministic() -> None:
@@ -87,6 +96,62 @@ def test_stub_planner_uses_script_and_language() -> None:
 
     # A different language changes the output, proving language is used.
     assert tuple(planner.plan("Welcome to the show.\nGoodbye now.", "en")) != scenes
+
+
+def test_stub_stock_clip_planner_is_deterministic() -> None:
+    planner = StubStockClipPlanner()
+    scenes = (
+        SceneSpec(
+            scene_id="scene-1",
+            narration="Show a calm workspace before the narration begins.",
+            visual_query="calm modern workspace",
+            duration_seconds=3.5,
+        ),
+    )
+
+    first = tuple(planner.plan_stock_clips(scenes, "en"))
+    second = tuple(planner.plan_stock_clips(scenes, "en"))
+
+    assert first == second
+
+
+def test_stub_stock_clip_planner_maps_scene_specs_to_stock_queries() -> None:
+    planner = StubStockClipPlanner()
+    scenes = (
+        SceneSpec(
+            scene_id="scene-1",
+            narration="Introduce the product with a clean desk shot.",
+            visual_query="clean desk product shot",
+            duration_seconds=4.0,
+        ),
+        SceneSpec(
+            scene_id="scene-2",
+            narration="Show a customer using the app on a phone.",
+            visual_query="person using mobile app",
+            duration_seconds=5.25,
+        ),
+    )
+
+    queries = tuple(planner.plan_stock_clips(scenes, "en"))
+
+    assert queries == (
+        StockQuerySpec(
+            scene_id="scene-1",
+            query="clean desk product shot",
+            visual_intent="Introduce the product with a clean desk shot.",
+            duration_seconds=4.0,
+            provider_hint=None,
+        ),
+        StockQuerySpec(
+            scene_id="scene-2",
+            query="person using mobile app",
+            visual_intent="Show a customer using the app on a phone.",
+            duration_seconds=5.25,
+            provider_hint=None,
+        ),
+    )
+    assert len(queries) == len(scenes)
+    assert all(query.provider_hint is None for query in queries)
 
 
 def test_generation_package_imports_no_forbidden_modules() -> None:
