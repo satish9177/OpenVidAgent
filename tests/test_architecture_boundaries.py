@@ -13,6 +13,8 @@ from backend.app.application.use_cases import (
     CreateRun,
     CreateSceneTable,
     CreateScriptDraft,
+    GenerateSceneTable,
+    GenerateScriptDraft,
     GetLatestSceneTable,
     GetLatestScriptDraft,
     GetRun,
@@ -51,6 +53,16 @@ def test_domain_has_no_framework_or_outer_layer_imports() -> None:
         "sqlalchemy",
         "sqlite",
         "sqlite3",
+        "os",
+        "pathlib",
+        "subprocess",
+        "openai",
+        "anthropic",
+        "google",
+        "cohere",
+        "mistralai",
+        "ffmpeg",
+        "moviepy",
     }
 
     for path in _python_files(APP_ROOT / "domain"):
@@ -150,6 +162,56 @@ def test_assets_route_imports_use_cases_not_infrastructure() -> None:
 
     assert _matching_imports(imports, {"backend.app.application"})
     assert not _matching_imports(imports, {"backend.app.infrastructure"})
+
+
+def test_generation_use_cases_depend_on_ports_and_create_use_cases() -> None:
+    expected: dict[type, dict[str, type]] = {
+        GenerateScriptDraft: {
+            "run_repository": RunRepository,
+            "script_generator": ScriptDraftGenerator,
+            "create_script_draft": CreateScriptDraft,
+        },
+        GenerateSceneTable: {
+            "run_repository": RunRepository,
+            "scene_planner": SceneTablePlanner,
+            "create_scene_table": CreateSceneTable,
+        },
+    }
+
+    for use_case, constructor_hints in expected.items():
+        hints = get_type_hints(use_case.__init__)
+        hints.pop("return", None)
+        # Exactly these dependencies: the run repository and generation port,
+        # plus the sibling Create use-case it composes -- never a concrete
+        # infrastructure type.
+        assert hints == constructor_hints, use_case.__name__
+
+
+def test_generation_adapters_import_no_api_application_or_external_modules() -> None:
+    forbidden = {
+        "backend.app.api",
+        "backend.app.application",
+        "openai",
+        "anthropic",
+        "google",
+        "cohere",
+        "mistralai",
+        "httpx",
+        "requests",
+        "urllib",
+        "aiohttp",
+        "socket",
+        "subprocess",
+        "ffmpeg",
+        "moviepy",
+    }
+
+    generation_files = _python_files(APP_ROOT / "infrastructure" / "generation")
+    assert generation_files
+
+    for path in generation_files:
+        imports = _imports_for(path)
+        assert not _matching_imports(imports, forbidden), path
 
 
 def _python_files(directory: Path) -> list[Path]:
