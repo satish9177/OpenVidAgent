@@ -118,3 +118,41 @@ def test_prompt_to_scenes_happy_path_advances_through_every_status() -> None:
     assert "provider_hint" in first_query
     assert first_query["provider_hint"] is None
     assert client.get(f"/runs/{run_id}").json()["status"] == "scenes_approved"
+
+    # 9. Retrieve clip candidates -> asset-only; run still stays
+    # `scenes_approved` and no render/download stage is used.
+    candidates = client.post(f"/runs/{run_id}/clip-candidates/retrieve")
+    assert candidates.status_code == status.HTTP_201_CREATED
+    candidates_body = candidates.json()
+    assert candidates_body["kind"] == "clip_candidates"
+    assert candidates_body["version"] == 1
+    assert candidates_body["metadata"]["source"] == "retrieved"
+    assert client.get(f"/runs/{run_id}").json()["status"] == "scenes_approved"
+
+    # 10. The candidate set is retrievable as parsed metadata-only rows. The
+    # deterministic retriever uses memory URLs, never a real provider download.
+    latest_candidates = client.get(f"/runs/{run_id}/clip-candidates/latest")
+    assert latest_candidates.status_code == status.HTTP_200_OK
+    latest_candidates_body = latest_candidates.json()
+    assert latest_candidates_body["asset"]["version"] == 1
+    assert latest_candidates_body["asset"]["metadata"]["source"] == "retrieved"
+    assert latest_candidates_body["candidates"], "expected non-empty candidates"
+    scene_ids = {
+        candidate["scene_id"]
+        for candidate in latest_candidates_body["candidates"]
+    }
+    assert scene_ids.issuperset(
+        query["scene_id"] for query in latest_stock_body["queries"]
+    )
+    first_candidate = latest_candidates_body["candidates"][0]
+    assert first_candidate["scene_id"]
+    assert first_candidate["query_text"]
+    assert first_candidate["provider"] == "stub"
+    assert first_candidate["provider_clip_id"]
+    assert first_candidate["title"]
+    assert first_candidate["preview_url"].startswith("memory://")
+    assert first_candidate["source_url"].startswith("memory://")
+    assert first_candidate["duration_seconds"] > 0
+    assert first_candidate["width"] == 1920
+    assert first_candidate["height"] == 1080
+    assert client.get(f"/runs/{run_id}").json()["status"] == "scenes_approved"

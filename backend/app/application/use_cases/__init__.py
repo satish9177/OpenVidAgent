@@ -1,6 +1,13 @@
 """Application use-cases."""
 
 from backend.app.application.use_cases.health_check import HealthCheck, HealthStatus
+from backend.app.application.use_cases.clip_candidate_assets import (
+    ClipCandidateSet,
+    CreateClipCandidateSet,
+    GetLatestClipCandidateSet,
+    ListClipCandidateSets,
+    RetrieveClipCandidates,
+)
 from backend.app.application.use_cases.run_lifecycle import (
     ApproveScenes,
     ApproveScript,
@@ -34,6 +41,8 @@ from backend.app.application.use_cases.stock_assets import (
 __all__ = [
     "ApproveScenes",
     "ApproveScript",
+    "ClipCandidateSet",
+    "CreateClipCandidateSet",
     "CreateRun",
     "CreateSceneTable",
     "CreateScriptDraft",
@@ -41,6 +50,7 @@ __all__ = [
     "GenerateSceneTable",
     "GenerateScriptDraft",
     "GenerateStockPlan",
+    "GetLatestClipCandidateSet",
     "GetLatestSceneTable",
     "GetLatestScriptDraft",
     "GetLatestStockPlan",
@@ -49,10 +59,12 @@ __all__ = [
     "HealthStatus",
     "ListSceneTables",
     "ListScriptDrafts",
+    "ListClipCandidateSets",
     "ListStockPlans",
     "MarkFailed",
     "MarkScenesReady",
     "MarkScriptReady",
     "SceneTable",
     "StockPlan",
+    "RetrieveClipCandidates",
 ]

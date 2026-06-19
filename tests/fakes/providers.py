@@ -6,12 +6,14 @@ from collections.abc import Sequence
 
 from backend.app.domain import (
     AssetKind,
+    ClipCandidate,
     RenderSpec,
     SceneSpec,
     StockQuerySpec,
     VersionedAsset,
 )
 from backend.app.ports import (
+    ClipRetrievalProvider,
     Renderer,
     SceneTablePlanner,
     ScriptDraftGenerator,
@@ -63,6 +65,36 @@ class FakeStockClipPlanner(StockClipPlanner):
                 duration_seconds=scene.duration_seconds,
             )
             for scene in scenes
+        )
+
+
+class FakeClipRetrievalProvider(ClipRetrievalProvider):
+    def __init__(
+        self,
+        candidates_by_scene_id: dict[str, Sequence[ClipCandidate]] | None = None,
+    ) -> None:
+        self.candidates_by_scene_id = candidates_by_scene_id or {}
+        self.queries: list[StockQuerySpec] = []
+
+    def retrieve(self, query: StockQuerySpec) -> Sequence[ClipCandidate]:
+        self.queries.append(query)
+        candidates = self.candidates_by_scene_id.get(query.scene_id)
+        if candidates is not None:
+            return tuple(candidates)
+
+        return (
+            ClipCandidate(
+                scene_id=query.scene_id,
+                query_text=query.query,
+                provider="fake",
+                provider_clip_id=f"{query.scene_id}-fake-1",
+                title=f"{query.query} fake candidate",
+                preview_url=f"memory://fake-clips/{query.scene_id}/preview.jpg",
+                source_url=f"memory://fake-clips/{query.scene_id}",
+                duration_seconds=query.duration_seconds,
+                width=1280,
+                height=720,
+            ),
         )
 
 

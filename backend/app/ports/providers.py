@@ -5,7 +5,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
-from backend.app.domain import RenderSpec, SceneSpec, StockQuerySpec, VersionedAsset
+from backend.app.domain import (
+    ClipCandidate,
+    RenderSpec,
+    SceneSpec,
+    StockQuerySpec,
+    VersionedAsset,
+)
 
 
 @runtime_checkable
@@ -37,6 +43,13 @@ class StockClipPlanner(Protocol):
         self, scenes: Sequence[SceneSpec], language: str
     ) -> Sequence[StockQuerySpec]:
         """Plan stock clip search queries for approved scenes."""
+        ...
+
+
+@runtime_checkable
+class ClipRetrievalProvider(Protocol):
+    def retrieve(self, query: StockQuerySpec) -> Sequence[ClipCandidate]:
+        """Return metadata-only clip candidates for one stock query."""
         ...
 
 

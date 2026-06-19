@@ -13,6 +13,7 @@ class AssetKind(str, Enum):
     SCRIPT = "script"
     SCENE_TABLE = "scene_table"
     STOCK_PLAN = "stock_plan"
+    CLIP_CANDIDATES = "clip_candidates"
     STOCK_CLIP = "stock_clip"
     VOICE = "voice"
     SUBTITLE = "subtitle"
@@ -80,6 +81,20 @@ class StockQuerySpec:
     visual_intent: str
     duration_seconds: float
     provider_hint: str | None = None
+
+
+@dataclass(frozen=True)
+class ClipCandidate:
+    scene_id: str
+    query_text: str
+    provider: str
+    provider_clip_id: str
+    title: str
+    preview_url: str
+    source_url: str
+    duration_seconds: float
+    width: int
+    height: int
 
 
 @dataclass(frozen=True)

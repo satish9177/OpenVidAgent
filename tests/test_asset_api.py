@@ -13,14 +13,22 @@ from fastapi import status
 from fastapi.testclient import TestClient
 
 from backend.app.config.settings import Settings
-from backend.app.domain import Run, RunStatus, SceneSpec, StockQuerySpec
+from backend.app.domain import (
+    ClipCandidate,
+    Run,
+    RunStatus,
+    SceneSpec,
+    StockQuerySpec,
+)
 from backend.app.infrastructure.generation import (
     EchoScriptDraftGenerator,
+    StubClipRetrievalProvider,
     StubSceneTablePlanner,
     StubStockClipPlanner,
 )
 from backend.app.main import create_app
 from backend.app.ports import (
+    ClipRetrievalProvider,
     SceneTablePlanner,
     ScriptDraftGenerator,
     StockClipPlanner,
@@ -40,6 +48,7 @@ def _client(
     script_generator: ScriptDraftGenerator | None = None,
     scene_planner: SceneTablePlanner | None = None,
     stock_planner: StockClipPlanner | None = None,
+    clip_retrieval_provider: ClipRetrievalProvider | None = None,
 ) -> TestClient:
     runs = InMemoryRunRepository()
     runs.save(
@@ -58,6 +67,7 @@ def _client(
             script_generator=script_generator,
             scene_planner=scene_planner,
             stock_planner=stock_planner,
+            clip_retrieval_provider=clip_retrieval_provider,
         )
     )
 
@@ -366,6 +376,30 @@ class _SpyStockPlanner(StockClipPlanner):
         )
 
 
+class _SpyClipRetrievalProvider(ClipRetrievalProvider):
+    """Records calls so a test can prove the injected retriever was used."""
+
+    def __init__(self) -> None:
+        self.calls: list[StockQuerySpec] = []
+
+    def retrieve(self, query: StockQuerySpec) -> Sequence[ClipCandidate]:
+        self.calls.append(query)
+        return (
+            ClipCandidate(
+                scene_id=query.scene_id,
+                query_text=query.query,
+                provider="spy",
+                provider_clip_id=f"{query.scene_id}-spy-1",
+                title=f"{query.query} spy candidate",
+                preview_url=f"memory://clips/{query.scene_id}/preview.jpg",
+                source_url=f"memory://clips/{query.scene_id}",
+                duration_seconds=query.duration_seconds,
+                width=1920,
+                height=1080,
+            ),
+        )
+
+
 def test_generate_script_draft_creates_generated_asset_and_advances_run() -> None:
     client = _client(RunStatus.CREATED)
 
@@ -585,6 +619,140 @@ def test_latest_stock_plan_when_none_returns_404() -> None:
     assert response.json()["kind"] == "stock_plan"
 
 
+def test_retrieve_clip_candidates_creates_retrieved_asset_and_keeps_run_approved() -> None:
+    stock_spy = _SpyStockPlanner()
+    clip_spy = _SpyClipRetrievalProvider()
+    client = _client(
+        RunStatus.SCRIPT_APPROVED,
+        stock_planner=stock_spy,
+        clip_retrieval_provider=clip_spy,
+    )
+    _approve_scenes_after_scene_table(client)
+    client.post("/runs/run-1/stock-plans/generate")
+
+    response = client.post("/runs/run-1/clip-candidates/retrieve")
+
+    assert response.status_code == status.HTTP_201_CREATED
+    body = response.json()
+    assert body["kind"] == "clip_candidates"
+    assert body["version"] == 1
+    assert body["metadata"]["source"] == "retrieved"
+    assert client.get("/runs/run-1").json()["status"] == "scenes_approved"
+    assert [query.scene_id for query in clip_spy.calls] == [
+        "stock-scene-1",
+        "stock-scene-2",
+    ]
+
+
+def test_retrieve_clip_candidates_missing_run_returns_404() -> None:
+    clip_spy = _SpyClipRetrievalProvider()
+    client = _client(
+        RunStatus.SCENES_APPROVED,
+        clip_retrieval_provider=clip_spy,
+    )
+
+    response = client.post("/runs/missing/clip-candidates/retrieve")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert clip_spy.calls == []
+
+
+def test_retrieve_clip_candidates_invalid_state_returns_409() -> None:
+    clip_spy = _SpyClipRetrievalProvider()
+    client = _client(RunStatus.CREATED, clip_retrieval_provider=clip_spy)
+
+    response = client.post("/runs/run-1/clip-candidates/retrieve")
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response.json()["kind"] == "clip_candidates"
+    assert response.json()["status"] == "created"
+    assert clip_spy.calls == []
+
+
+def test_retrieve_clip_candidates_without_stock_plan_returns_404_after_status_guard() -> None:
+    clip_spy = _SpyClipRetrievalProvider()
+    client = _client(
+        RunStatus.SCENES_APPROVED,
+        clip_retrieval_provider=clip_spy,
+    )
+
+    response = client.post("/runs/run-1/clip-candidates/retrieve")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["kind"] == "stock_plan"
+    assert clip_spy.calls == []
+
+
+def test_get_clip_candidate_list_returns_ordered_versions() -> None:
+    client = _client(RunStatus.SCRIPT_APPROVED)
+    _approve_scenes_after_scene_table(client)
+    client.post("/runs/run-1/stock-plans/generate")
+    client.post("/runs/run-1/clip-candidates/retrieve")
+    client.post("/runs/run-1/clip-candidates/retrieve")
+
+    response = client.get("/runs/run-1/clip-candidates")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert [asset["version"] for asset in response.json()] == [1, 2]
+
+
+def test_get_latest_clip_candidates_returns_parsed_candidates() -> None:
+    stock_spy = _SpyStockPlanner()
+    clip_spy = _SpyClipRetrievalProvider()
+    client = _client(
+        RunStatus.SCRIPT_APPROVED,
+        stock_planner=stock_spy,
+        clip_retrieval_provider=clip_spy,
+    )
+    _approve_scenes_after_scene_table(client)
+    client.post("/runs/run-1/stock-plans/generate")
+    client.post("/runs/run-1/clip-candidates/retrieve")
+
+    response = client.get("/runs/run-1/clip-candidates/latest")
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["asset"]["kind"] == "clip_candidates"
+    assert body["asset"]["version"] == 1
+    assert body["asset"]["metadata"]["source"] == "retrieved"
+    assert body["candidates"] == [
+        {
+            "scene_id": "stock-scene-1",
+            "query_text": "injected stock query",
+            "provider": "spy",
+            "provider_clip_id": "stock-scene-1-spy-1",
+            "title": "injected stock query spy candidate",
+            "preview_url": "memory://clips/stock-scene-1/preview.jpg",
+            "source_url": "memory://clips/stock-scene-1",
+            "duration_seconds": 7.5,
+            "width": 1920,
+            "height": 1080,
+        },
+        {
+            "scene_id": "stock-scene-2",
+            "query_text": "second injected query",
+            "provider": "spy",
+            "provider_clip_id": "stock-scene-2-spy-1",
+            "title": "second injected query spy candidate",
+            "preview_url": "memory://clips/stock-scene-2/preview.jpg",
+            "source_url": "memory://clips/stock-scene-2",
+            "duration_seconds": 2.25,
+            "width": 1920,
+            "height": 1080,
+        },
+    ]
+
+
+def test_latest_clip_candidates_when_none_returns_404() -> None:
+    client = _client(RunStatus.SCRIPT_APPROVED)
+    _approve_scenes_after_scene_table(client)
+
+    response = client.get("/runs/run-1/clip-candidates/latest")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["kind"] == "clip_candidates"
+
+
 def test_default_app_wires_deterministic_generation_adapters() -> None:
     # All infra injected except the generators, which must default to the
     # deterministic local adapters (no external calls, no SDKs).
@@ -597,3 +765,4 @@ def test_default_app_wires_deterministic_generation_adapters() -> None:
     assert isinstance(app.state.script_generator, EchoScriptDraftGenerator)
     assert isinstance(app.state.scene_planner, StubSceneTablePlanner)
     assert isinstance(app.state.stock_planner, StubStockClipPlanner)
+    assert isinstance(app.state.clip_retrieval_provider, StubClipRetrievalProvider)

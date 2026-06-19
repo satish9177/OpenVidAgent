@@ -13,23 +13,34 @@ from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel
 
 from backend.app.application.use_cases import (
+    ClipCandidateSet,
+    CreateClipCandidateSet,
     CreateSceneTable,
     CreateScriptDraft,
     CreateStockPlan,
     GenerateSceneTable,
     GenerateScriptDraft,
     GenerateStockPlan,
+    GetLatestClipCandidateSet,
     GetLatestSceneTable,
     GetLatestScriptDraft,
     GetLatestStockPlan,
+    ListClipCandidateSets,
     ListSceneTables,
     ListScriptDrafts,
     ListStockPlans,
+    RetrieveClipCandidates,
     SceneTable,
     StockPlan,
 )
-from backend.app.domain import SceneSpec, StockQuerySpec, VersionedAsset
+from backend.app.domain import (
+    ClipCandidate,
+    SceneSpec,
+    StockQuerySpec,
+    VersionedAsset,
+)
 from backend.app.ports import (
+    ClipRetrievalProvider,
     RunRepository,
     SceneTablePlanner,
     ScriptDraftGenerator,
@@ -71,6 +82,11 @@ def get_scene_planner(request: Request) -> SceneTablePlanner:
 def get_stock_planner(request: Request) -> StockClipPlanner:
     """Resolve the stock-clip planner wired at composition time."""
     return request.app.state.stock_planner
+
+
+def get_clip_retrieval_provider(request: Request) -> ClipRetrievalProvider:
+    """Resolve the clip retrieval provider wired at composition time."""
+    return request.app.state.clip_retrieval_provider
 
 
 class CreateScriptDraftRequest(BaseModel):
@@ -173,6 +189,51 @@ class StockPlanResponse(BaseModel):
             queries=[
                 StockQuerySpecModel.from_domain(query)
                 for query in plan.queries
+            ],
+        )
+
+
+class ClipCandidateModel(BaseModel):
+    scene_id: str
+    query_text: str
+    provider: str
+    provider_clip_id: str
+    title: str
+    preview_url: str
+    source_url: str
+    duration_seconds: float
+    width: int
+    height: int
+
+    @classmethod
+    def from_domain(cls, candidate: ClipCandidate) -> "ClipCandidateModel":
+        return cls(
+            scene_id=candidate.scene_id,
+            query_text=candidate.query_text,
+            provider=candidate.provider,
+            provider_clip_id=candidate.provider_clip_id,
+            title=candidate.title,
+            preview_url=candidate.preview_url,
+            source_url=candidate.source_url,
+            duration_seconds=candidate.duration_seconds,
+            width=candidate.width,
+            height=candidate.height,
+        )
+
+
+class ClipCandidateSetResponse(BaseModel):
+    asset: AssetResponse
+    candidates: list[ClipCandidateModel]
+
+    @classmethod
+    def from_clip_candidate_set(
+        cls, candidate_set: ClipCandidateSet
+    ) -> "ClipCandidateSetResponse":
+        return cls(
+            asset=AssetResponse.from_asset(candidate_set.asset),
+            candidates=[
+                ClipCandidateModel.from_domain(candidate)
+                for candidate in candidate_set.candidates
             ],
         )
 
@@ -360,3 +421,60 @@ def get_latest_stock_plan(
 ) -> StockPlanResponse:
     plan = GetLatestStockPlan(asset_repository, storage).execute(run_id)
     return StockPlanResponse.from_stock_plan(plan)
+
+
+@router.post(
+    "/{run_id}/clip-candidates/retrieve",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AssetResponse,
+)
+def retrieve_clip_candidates(
+    run_id: str,
+    run_repository: RunRepository = Depends(get_run_repository),
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+    clip_retrieval_provider: ClipRetrievalProvider = Depends(
+        get_clip_retrieval_provider
+    ),
+) -> AssetResponse:
+    create_clip_candidate_set = CreateClipCandidateSet(
+        run_repository, asset_repository, storage
+    )
+    get_latest_stock_plan = GetLatestStockPlan(asset_repository, storage)
+    asset = RetrieveClipCandidates(
+        run_repository,
+        clip_retrieval_provider,
+        get_latest_stock_plan,
+        create_clip_candidate_set,
+    ).execute(run_id)
+    return AssetResponse.from_asset(asset)
+
+
+@router.get("/{run_id}/clip-candidates", response_model=list[AssetResponse])
+def list_clip_candidates(
+    run_id: str,
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+) -> list[AssetResponse]:
+    assets = ListClipCandidateSets(asset_repository).execute(run_id)
+    return [AssetResponse.from_asset(asset) for asset in assets]
+
+
+@router.get(
+    "/{run_id}/clip-candidates/latest",
+    response_model=ClipCandidateSetResponse,
+)
+def get_latest_clip_candidates(
+    run_id: str,
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+) -> ClipCandidateSetResponse:
+    candidate_set = GetLatestClipCandidateSet(
+        asset_repository, storage
+    ).execute(run_id)
+    return ClipCandidateSetResponse.from_clip_candidate_set(candidate_set)
