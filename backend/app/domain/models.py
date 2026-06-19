@@ -12,6 +12,7 @@ from backend.app.domain.errors import InvalidRunTransitionError
 class AssetKind(str, Enum):
     SCRIPT = "script"
     SCENE_TABLE = "scene_table"
+    STOCK_PLAN = "stock_plan"
     STOCK_CLIP = "stock_clip"
     VOICE = "voice"
     SUBTITLE = "subtitle"
@@ -70,6 +71,15 @@ class SceneSpec:
     narration: str
     visual_query: str
     duration_seconds: float
+
+
+@dataclass(frozen=True)
+class StockQuerySpec:
+    scene_id: str
+    query: str
+    visual_intent: str
+    duration_seconds: float
+    provider_hint: str | None = None
 
 
 @dataclass(frozen=True)
