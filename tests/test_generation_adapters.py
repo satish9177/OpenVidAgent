@@ -5,13 +5,15 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from backend.app.domain import SceneSpec, StockQuerySpec
+from backend.app.domain import ClipCandidate, SceneSpec, StockQuerySpec
 from backend.app.infrastructure.generation import (
     EchoScriptDraftGenerator,
+    StubClipRetrievalProvider,
     StubSceneTablePlanner,
     StubStockClipPlanner,
 )
 from backend.app.ports import (
+    ClipRetrievalProvider,
     SceneTablePlanner,
     ScriptDraftGenerator,
     StockClipPlanner,
@@ -36,6 +38,10 @@ def test_stub_planner_implements_port() -> None:
 
 def test_stub_stock_clip_planner_implements_port() -> None:
     assert isinstance(StubStockClipPlanner(), StockClipPlanner)
+
+
+def test_stub_clip_retrieval_provider_implements_port() -> None:
+    assert isinstance(StubClipRetrievalProvider(), ClipRetrievalProvider)
 
 
 def test_echo_generator_is_deterministic() -> None:
@@ -152,6 +158,63 @@ def test_stub_stock_clip_planner_maps_scene_specs_to_stock_queries() -> None:
     )
     assert len(queries) == len(scenes)
     assert all(query.provider_hint is None for query in queries)
+
+
+def test_stub_clip_retrieval_provider_is_deterministic() -> None:
+    provider = StubClipRetrievalProvider()
+    query = StockQuerySpec(
+        scene_id="scene-1",
+        query="calm modern workspace",
+        visual_intent="Show a calm workspace before narration begins.",
+        duration_seconds=3.5,
+    )
+
+    first = tuple(provider.retrieve(query))
+    second = tuple(provider.retrieve(query))
+
+    assert first == second
+
+
+def test_stub_clip_retrieval_provider_maps_stock_query_to_candidates() -> None:
+    provider = StubClipRetrievalProvider()
+    query = StockQuerySpec(
+        scene_id="scene-1",
+        query="clean desk product shot",
+        visual_intent="Introduce the product with a clean desk shot.",
+        duration_seconds=4.0,
+    )
+
+    candidates = tuple(provider.retrieve(query))
+
+    assert candidates == (
+        ClipCandidate(
+            scene_id="scene-1",
+            query_text="clean desk product shot",
+            provider="stub",
+            provider_clip_id="scene-1-1",
+            title="clean desk product shot (candidate 1)",
+            preview_url="memory://clips/scene-1/1/preview.jpg",
+            source_url="memory://clips/scene-1/1",
+            duration_seconds=4.0,
+            width=1920,
+            height=1080,
+        ),
+        ClipCandidate(
+            scene_id="scene-1",
+            query_text="clean desk product shot",
+            provider="stub",
+            provider_clip_id="scene-1-2",
+            title="clean desk product shot (candidate 2)",
+            preview_url="memory://clips/scene-1/2/preview.jpg",
+            source_url="memory://clips/scene-1/2",
+            duration_seconds=4.0,
+            width=1920,
+            height=1080,
+        ),
+    )
+    assert len(candidates) == 2
+    assert all(candidate.preview_url.startswith("memory://") for candidate in candidates)
+    assert all(candidate.source_url.startswith("memory://") for candidate in candidates)
 
 
 def test_generation_package_imports_no_forbidden_modules() -> None:

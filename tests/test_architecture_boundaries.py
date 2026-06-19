@@ -11,6 +11,7 @@ from typing import get_type_hints
 from backend.app.application.use_cases import (
     ApproveScenes,
     ApproveScript,
+    CreateClipCandidateSet,
     CreateRun,
     CreateSceneTable,
     CreateScriptDraft,
@@ -18,18 +19,22 @@ from backend.app.application.use_cases import (
     GenerateSceneTable,
     GenerateScriptDraft,
     GenerateStockPlan,
+    GetLatestClipCandidateSet,
     GetLatestSceneTable,
     GetLatestScriptDraft,
     GetLatestStockPlan,
     GetRun,
     ListSceneTables,
     ListScriptDrafts,
+    ListClipCandidateSets,
     ListStockPlans,
     MarkFailed,
     MarkScenesReady,
     MarkScriptReady,
+    RetrieveClipCandidates,
 )
 from backend.app.ports import (
+    ClipRetrievalProvider,
     Renderer,
     RunRepository,
     SceneTablePlanner,
@@ -104,6 +109,7 @@ def test_provider_interfaces_live_in_ports() -> None:
         ScriptDraftGenerator,
         SceneTablePlanner,
         StockClipPlanner,
+        ClipRetrievalProvider,
         StockProvider,
         TTSProvider,
         SubtitleBuilder,
@@ -177,6 +183,17 @@ def test_stock_asset_use_cases_depend_only_on_expected_ports_and_factories() -> 
             "asset_repository": VersionedAssetRepository,
             "storage": StoragePort,
         },
+        CreateClipCandidateSet: {
+            "run_repository": RunRepository,
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+            "asset_id_factory": Callable[[], str] | None,
+        },
+        ListClipCandidateSets: {"asset_repository": VersionedAssetRepository},
+        GetLatestClipCandidateSet: {
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+        },
     }
 
     for use_case, constructor_hints in expected.items():
@@ -212,6 +229,26 @@ def test_stub_stock_clip_planner_import_confined_to_composition_root() -> None:
     assert not offenders
 
 
+def test_stub_clip_retrieval_provider_import_confined_to_composition_root() -> None:
+    allowed = APP_ROOT / "main.py"
+    offenders: list[Path] = []
+
+    for path in _python_files(APP_ROOT):
+        relative_parts = path.relative_to(APP_ROOT).parts
+        if "infrastructure" in relative_parts:
+            continue
+        if path == allowed:
+            continue
+        if _imports_symbol(
+            path,
+            module_prefix="backend.app.infrastructure.generation",
+            symbol="StubClipRetrievalProvider",
+        ):
+            offenders.append(path)
+
+    assert not offenders
+
+
 def test_generation_use_cases_depend_on_ports_and_create_use_cases() -> None:
     expected: dict[type, dict[str, type]] = {
         GenerateScriptDraft: {
@@ -229,6 +266,12 @@ def test_generation_use_cases_depend_on_ports_and_create_use_cases() -> None:
             "stock_planner": StockClipPlanner,
             "get_latest_scene_table": GetLatestSceneTable,
             "create_stock_plan": CreateStockPlan,
+        },
+        RetrieveClipCandidates: {
+            "run_repository": RunRepository,
+            "clip_retrieval_provider": ClipRetrievalProvider,
+            "get_latest_stock_plan": GetLatestStockPlan,
+            "create_clip_candidate_set": CreateClipCandidateSet,
         },
     }
 

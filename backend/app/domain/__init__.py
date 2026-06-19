@@ -3,6 +3,7 @@
 from backend.app.domain.errors import InvalidRunTransitionError
 from backend.app.domain.models import (
     AssetKind,
+    ClipCandidate,
     Job,
     JobStatus,
     RenderSpec,
@@ -16,6 +17,7 @@ from backend.app.domain.models import (
 
 __all__ = [
     "AssetKind",
+    "ClipCandidate",
     "Job",
     "JobStatus",
     "InvalidRunTransitionError",
