@@ -19,24 +19,29 @@ from backend.app.application.use_cases import (
     CreateSelectedClipSet,
     CreateScriptDraft,
     CreateStockPlan,
+    CreateVideoAssemblyPlan,
     GenerateSceneTable,
     GenerateScriptDraft,
     GenerateStockPlan,
+    GenerateVideoAssemblyPlan,
     GetLatestClipCandidateSet,
     GetLatestSceneTable,
     GetLatestSelectedClipSet,
     GetLatestScriptDraft,
     GetLatestStockPlan,
+    GetLatestVideoAssemblyPlan,
     ListClipCandidateSets,
     ListSceneTables,
     ListSelectedClipSets,
     ListScriptDrafts,
     ListStockPlans,
+    ListVideoAssemblyPlans,
     RetrieveClipCandidates,
     SceneTable,
     SelectClips,
     SelectedClipSet,
     StockPlan,
+    VideoAssemblyPlan,
 )
 from backend.app.domain import (
     ClipCandidate,
@@ -44,6 +49,7 @@ from backend.app.domain import (
     SelectedClip,
     StockQuerySpec,
     VersionedAsset,
+    VideoAssemblySegment,
 )
 from backend.app.ports import (
     ClipRetrievalProvider,
@@ -54,6 +60,7 @@ from backend.app.ports import (
     StockClipPlanner,
     StoragePort,
     VersionedAssetRepository,
+    VideoAssemblyPlanner,
 )
 
 router = APIRouter(prefix="/runs", tags=["assets"])
@@ -99,6 +106,11 @@ def get_clip_retrieval_provider(request: Request) -> ClipRetrievalProvider:
 def get_clip_selector(request: Request) -> ClipSelector:
     """Resolve the clip selector wired at composition time."""
     return request.app.state.clip_selector
+
+
+def get_video_assembly_planner(request: Request) -> VideoAssemblyPlanner:
+    """Resolve the video assembly planner wired at composition time."""
+    return request.app.state.video_assembly_planner
 
 
 class CreateScriptDraftRequest(BaseModel):
@@ -293,6 +305,67 @@ class SelectedClipSetResponse(BaseModel):
             selected_clips=[
                 SelectedClipModel.from_domain(selected_clip)
                 for selected_clip in selected_clip_set.selected_clips
+            ],
+        )
+
+
+class VideoAssemblySegmentModel(BaseModel):
+    scene_id: str
+    query_text: str
+    narration: str
+    visual_query: str
+    provider: str
+    provider_clip_id: str
+    title: str
+    preview_url: str
+    source_url: str
+    target_duration_seconds: float
+    source_duration_seconds: float
+    width: int
+    height: int
+    order_index: int
+    transition: str
+    continuity_note: str
+    selection_reason: str
+
+    @classmethod
+    def from_domain(
+        cls, segment: VideoAssemblySegment
+    ) -> "VideoAssemblySegmentModel":
+        return cls(
+            scene_id=segment.scene_id,
+            query_text=segment.query_text,
+            narration=segment.narration,
+            visual_query=segment.visual_query,
+            provider=segment.provider,
+            provider_clip_id=segment.provider_clip_id,
+            title=segment.title,
+            preview_url=segment.preview_url,
+            source_url=segment.source_url,
+            target_duration_seconds=segment.target_duration_seconds,
+            source_duration_seconds=segment.source_duration_seconds,
+            width=segment.width,
+            height=segment.height,
+            order_index=segment.order_index,
+            transition=segment.transition,
+            continuity_note=segment.continuity_note,
+            selection_reason=segment.selection_reason,
+        )
+
+
+class VideoAssemblyPlanResponse(BaseModel):
+    asset: AssetResponse
+    segments: list[VideoAssemblySegmentModel]
+
+    @classmethod
+    def from_video_assembly_plan(
+        cls, plan: VideoAssemblyPlan
+    ) -> "VideoAssemblyPlanResponse":
+        return cls(
+            asset=AssetResponse.from_asset(plan.asset),
+            segments=[
+                VideoAssemblySegmentModel.from_domain(segment)
+                for segment in plan.segments
             ],
         )
 
@@ -594,3 +667,65 @@ def get_latest_selected_clips(
         asset_repository, storage
     ).execute(run_id)
     return SelectedClipSetResponse.from_selected_clip_set(selected_clip_set)
+
+
+@router.post(
+    "/{run_id}/video-assembly-plans/generate",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AssetResponse,
+)
+def generate_video_assembly_plan(
+    run_id: str,
+    run_repository: RunRepository = Depends(get_run_repository),
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+    video_assembly_planner: VideoAssemblyPlanner = Depends(
+        get_video_assembly_planner
+    ),
+) -> AssetResponse:
+    create_video_assembly_plan = CreateVideoAssemblyPlan(
+        run_repository, asset_repository, storage
+    )
+    get_latest_selected_clip_set = GetLatestSelectedClipSet(
+        asset_repository, storage
+    )
+    get_latest_scene_table = GetLatestSceneTable(asset_repository, storage)
+    asset = GenerateVideoAssemblyPlan(
+        run_repository,
+        video_assembly_planner,
+        get_latest_selected_clip_set,
+        get_latest_scene_table,
+        create_video_assembly_plan,
+    ).execute(run_id)
+    return AssetResponse.from_asset(asset)
+
+
+@router.get(
+    "/{run_id}/video-assembly-plans",
+    response_model=list[AssetResponse],
+)
+def list_video_assembly_plans(
+    run_id: str,
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+) -> list[AssetResponse]:
+    assets = ListVideoAssemblyPlans(asset_repository).execute(run_id)
+    return [AssetResponse.from_asset(asset) for asset in assets]
+
+
+@router.get(
+    "/{run_id}/video-assembly-plans/latest",
+    response_model=VideoAssemblyPlanResponse,
+)
+def get_latest_video_assembly_plan(
+    run_id: str,
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+) -> VideoAssemblyPlanResponse:
+    plan = GetLatestVideoAssemblyPlan(asset_repository, storage).execute(run_id)
+    return VideoAssemblyPlanResponse.from_video_assembly_plan(plan)

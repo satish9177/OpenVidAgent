@@ -13,6 +13,7 @@ from fastapi import status
 from fastapi.testclient import TestClient
 
 from backend.app.config.settings import Settings
+from backend.app.application.use_cases import CreateSelectedClipSet
 from backend.app.domain import (
     ClipCandidate,
     Run,
@@ -20,9 +21,11 @@ from backend.app.domain import (
     SceneSpec,
     SelectedClip,
     StockQuerySpec,
+    VideoAssemblySegment,
 )
 from backend.app.infrastructure.generation import (
     DeterministicClipSelector,
+    DeterministicVideoAssemblyPlanner,
     EchoScriptDraftGenerator,
     StubClipRetrievalProvider,
     StubSceneTablePlanner,
@@ -35,8 +38,10 @@ from backend.app.ports import (
     SceneTablePlanner,
     ScriptDraftGenerator,
     StockClipPlanner,
+    VideoAssemblyPlanner,
 )
 from tests.fakes import (
+    FakeVideoAssemblyPlanner,
     InMemoryRunRepository,
     InMemoryStorage,
     InMemoryVersionedAssetRepository,
@@ -53,6 +58,7 @@ def _client(
     stock_planner: StockClipPlanner | None = None,
     clip_retrieval_provider: ClipRetrievalProvider | None = None,
     clip_selector: ClipSelector | None = None,
+    video_assembly_planner: VideoAssemblyPlanner | None = None,
 ) -> TestClient:
     runs = InMemoryRunRepository()
     runs.save(
@@ -73,6 +79,7 @@ def _client(
             stock_planner=stock_planner,
             clip_retrieval_provider=clip_retrieval_provider,
             clip_selector=clip_selector,
+            video_assembly_planner=video_assembly_planner,
         )
     )
 
@@ -944,3 +951,166 @@ def test_default_app_wires_deterministic_generation_adapters() -> None:
     assert isinstance(app.state.stock_planner, StubStockClipPlanner)
     assert isinstance(app.state.clip_retrieval_provider, StubClipRetrievalProvider)
     assert isinstance(app.state.clip_selector, DeterministicClipSelector)
+    assert isinstance(
+        app.state.video_assembly_planner,
+        DeterministicVideoAssemblyPlanner,
+    )
+
+
+def _assembly_segment() -> VideoAssemblySegment:
+    return VideoAssemblySegment(
+        scene_id="scene-1",
+        query_text="city skyline",
+        narration="Opening narration",
+        visual_query="city skyline",
+        provider="stub",
+        provider_clip_id="scene-1-1",
+        title="city skyline candidate 1",
+        preview_url="memory://clips/scene-1/1/preview.jpg",
+        source_url="memory://clips/scene-1/1",
+        target_duration_seconds=4.0,
+        source_duration_seconds=4.0,
+        width=1920,
+        height=1080,
+        order_index=0,
+        transition="cut",
+        continuity_note="ordered_by_scene_table",
+        selection_reason="first_candidate_for_scene_query",
+    )
+
+
+def _seed_selected_clips_through_api(client: TestClient) -> None:
+    _approve_scenes_after_scene_table(client)
+    assert client.post("/runs/run-1/stock-plans/generate").status_code == 201
+    assert client.post("/runs/run-1/clip-candidates/retrieve").status_code == 201
+    assert client.post("/runs/run-1/selected-clips/select").status_code == 201
+
+
+def test_generate_video_assembly_plan_versions_and_keeps_run_approved() -> None:
+    planner = FakeVideoAssemblyPlanner((_assembly_segment(),))
+    client = _client(
+        RunStatus.SCRIPT_APPROVED,
+        video_assembly_planner=planner,
+    )
+    _seed_selected_clips_through_api(client)
+
+    first = client.post("/runs/run-1/video-assembly-plans/generate")
+    second = client.post("/runs/run-1/video-assembly-plans/generate")
+
+    assert first.status_code == status.HTTP_201_CREATED
+    assert second.status_code == status.HTTP_201_CREATED
+    assert (first.json()["version"], second.json()["version"]) == (1, 2)
+    metadata = first.json()["metadata"]
+    assert metadata["source"] == "generated"
+    assert metadata["aspect_ratio"] == "16:9"
+    assert metadata["render_intent"] == "voiceover_b_roll"
+    assert metadata["scene_table_asset_id"]
+    assert metadata["scene_table_version"] == "1"
+    assert metadata["selected_clips_asset_id"]
+    assert metadata["selected_clips_version"] == "1"
+    assert len(planner.calls) == 2
+    assert client.get("/runs/run-1").json()["status"] == "scenes_approved"
+
+
+def test_list_and_latest_video_assembly_plans_return_parsed_metadata() -> None:
+    planner = FakeVideoAssemblyPlanner((_assembly_segment(),))
+    client = _client(
+        RunStatus.SCRIPT_APPROVED,
+        video_assembly_planner=planner,
+    )
+    _seed_selected_clips_through_api(client)
+    client.post("/runs/run-1/video-assembly-plans/generate")
+    client.post("/runs/run-1/video-assembly-plans/generate")
+
+    listed = client.get("/runs/run-1/video-assembly-plans")
+    latest = client.get("/runs/run-1/video-assembly-plans/latest")
+
+    assert listed.status_code == status.HTTP_200_OK
+    assert [asset["version"] for asset in listed.json()] == [1, 2]
+    assert latest.status_code == status.HTTP_200_OK
+    assert latest.json()["asset"]["version"] == 2
+    assert latest.json()["segments"] == [_assembly_segment().__dict__]
+
+
+def test_generate_video_assembly_plan_missing_run_returns_404() -> None:
+    planner = FakeVideoAssemblyPlanner((_assembly_segment(),))
+    client = _client(
+        RunStatus.SCENES_APPROVED,
+        video_assembly_planner=planner,
+    )
+
+    response = client.post("/runs/missing/video-assembly-plans/generate")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert planner.calls == []
+
+
+def test_generate_video_assembly_plan_invalid_status_wins_over_missing_assets() -> None:
+    planner = FakeVideoAssemblyPlanner((_assembly_segment(),))
+    client = _client(RunStatus.CREATED, video_assembly_planner=planner)
+
+    response = client.post("/runs/run-1/video-assembly-plans/generate")
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response.json()["kind"] == "video_assembly_plan"
+    assert response.json()["status"] == "created"
+    assert planner.calls == []
+
+
+def test_generate_video_assembly_plan_missing_selected_clips_returns_404() -> None:
+    planner = FakeVideoAssemblyPlanner((_assembly_segment(),))
+    client = _client(
+        RunStatus.SCENES_APPROVED,
+        video_assembly_planner=planner,
+    )
+
+    response = client.post("/runs/run-1/video-assembly-plans/generate")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["kind"] == "selected_clips"
+    assert planner.calls == []
+
+
+def test_generate_video_assembly_plan_missing_scene_table_returns_404() -> None:
+    planner = FakeVideoAssemblyPlanner((_assembly_segment(),))
+    client = _client(
+        RunStatus.SCENES_APPROVED,
+        video_assembly_planner=planner,
+    )
+    CreateSelectedClipSet(
+        client.app.state.run_repository,
+        client.app.state.versioned_asset_repository,
+        client.app.state.storage,
+        asset_id_factory=lambda: "selected-clips-1",
+    ).execute(
+        "run-1",
+        (
+            SelectedClip(
+                scene_id="scene-1",
+                query_text="city skyline",
+                provider="stub",
+                provider_clip_id="scene-1-1",
+                title="city skyline candidate 1",
+                preview_url="memory://clips/scene-1/1/preview.jpg",
+                source_url="memory://clips/scene-1/1",
+                duration_seconds=4.0,
+                width=1920,
+                height=1080,
+                selection_reason="first_candidate_for_scene_query",
+            ),
+        ),
+    )
+
+    response = client.post("/runs/run-1/video-assembly-plans/generate")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["kind"] == "scene_table"
+    assert planner.calls == []
+
+
+def test_video_assembly_plan_manual_render_and_download_routes_are_absent() -> None:
+    client = _client(RunStatus.SCENES_APPROVED)
+
+    assert client.post("/runs/run-1/video-assembly-plans").status_code == 405
+    assert client.post("/runs/run-1/video-assembly-plans/render").status_code == 404
+    assert client.get("/runs/run-1/video-assembly-plans/download").status_code == 404

@@ -15,6 +15,7 @@ class AssetKind(str, Enum):
     STOCK_PLAN = "stock_plan"
     CLIP_CANDIDATES = "clip_candidates"
     SELECTED_CLIPS = "selected_clips"
+    VIDEO_ASSEMBLY_PLAN = "video_assembly_plan"
     STOCK_CLIP = "stock_clip"
     VOICE = "voice"
     SUBTITLE = "subtitle"
@@ -110,6 +111,27 @@ class SelectedClip:
     duration_seconds: float
     width: int
     height: int
+    selection_reason: str
+
+
+@dataclass(frozen=True)
+class VideoAssemblySegment:
+    scene_id: str
+    query_text: str
+    narration: str
+    visual_query: str
+    provider: str
+    provider_clip_id: str
+    title: str
+    preview_url: str
+    source_url: str
+    target_duration_seconds: float
+    source_duration_seconds: float
+    width: int
+    height: int
+    order_index: int
+    transition: str
+    continuity_note: str
     selection_reason: str
 
 

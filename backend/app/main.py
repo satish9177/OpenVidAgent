@@ -25,6 +25,7 @@ from backend.app.infrastructure.db import (
 )
 from backend.app.infrastructure.generation import (
     DeterministicClipSelector,
+    DeterministicVideoAssemblyPlanner,
     EchoScriptDraftGenerator,
     StubClipRetrievalProvider,
     StubSceneTablePlanner,
@@ -40,6 +41,7 @@ from backend.app.ports import (
     StockClipPlanner,
     StoragePort,
     VersionedAssetRepository,
+    VideoAssemblyPlanner,
 )
 
 
@@ -54,6 +56,7 @@ def create_app(
     stock_planner: StockClipPlanner | None = None,
     clip_retrieval_provider: ClipRetrievalProvider | None = None,
     clip_selector: ClipSelector | None = None,
+    video_assembly_planner: VideoAssemblyPlanner | None = None,
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
 
@@ -85,6 +88,8 @@ def create_app(
         clip_retrieval_provider = StubClipRetrievalProvider()
     if clip_selector is None:
         clip_selector = DeterministicClipSelector()
+    if video_assembly_planner is None:
+        video_assembly_planner = DeterministicVideoAssemblyPlanner()
 
     lifespan = None
     if needs_database or needs_storage_root:
@@ -112,6 +117,7 @@ def create_app(
     app.state.stock_planner = stock_planner
     app.state.clip_retrieval_provider = clip_retrieval_provider
     app.state.clip_selector = clip_selector
+    app.state.video_assembly_planner = video_assembly_planner
     app.include_router(health_router)
     app.include_router(runs_router)
     app.include_router(assets_router)

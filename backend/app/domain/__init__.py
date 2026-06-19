@@ -14,6 +14,7 @@ from backend.app.domain.models import (
     SelectedClip,
     StockQuerySpec,
     VersionedAsset,
+    VideoAssemblySegment,
 )
 
 __all__ = [
@@ -30,4 +31,5 @@ __all__ = [
     "SelectedClip",
     "StockQuerySpec",
     "VersionedAsset",
+    "VideoAssemblySegment",
 ]

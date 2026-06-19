@@ -44,6 +44,13 @@ from backend.app.application.use_cases.stock_assets import (
     ListStockPlans,
     StockPlan,
 )
+from backend.app.application.use_cases.video_assembly_plan_assets import (
+    CreateVideoAssemblyPlan,
+    GenerateVideoAssemblyPlan,
+    GetLatestVideoAssemblyPlan,
+    ListVideoAssemblyPlans,
+    VideoAssemblyPlan,
+)
 
 __all__ = [
     "ApproveScenes",
@@ -55,14 +62,17 @@ __all__ = [
     "CreateScriptDraft",
     "CreateSelectedClipSet",
     "CreateStockPlan",
+    "CreateVideoAssemblyPlan",
     "GenerateSceneTable",
     "GenerateScriptDraft",
     "GenerateStockPlan",
+    "GenerateVideoAssemblyPlan",
     "GetLatestClipCandidateSet",
     "GetLatestSceneTable",
     "GetLatestScriptDraft",
     "GetLatestSelectedClipSet",
     "GetLatestStockPlan",
+    "GetLatestVideoAssemblyPlan",
     "GetRun",
     "HealthCheck",
     "HealthStatus",
@@ -71,6 +81,7 @@ __all__ = [
     "ListScriptDrafts",
     "ListClipCandidateSets",
     "ListStockPlans",
+    "ListVideoAssemblyPlans",
     "MarkFailed",
     "MarkScenesReady",
     "MarkScriptReady",
@@ -79,4 +90,5 @@ __all__ = [
     "SelectedClipSet",
     "StockPlan",
     "RetrieveClipCandidates",
+    "VideoAssemblyPlan",
 ]

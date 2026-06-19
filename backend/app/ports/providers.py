@@ -12,6 +12,7 @@ from backend.app.domain import (
     SelectedClip,
     StockQuerySpec,
     VersionedAsset,
+    VideoAssemblySegment,
 )
 
 
@@ -60,6 +61,17 @@ class ClipSelector(Protocol):
         self, candidates: Sequence[ClipCandidate]
     ) -> Sequence[SelectedClip]:
         """Choose selected clips from retrieved candidate metadata."""
+        ...
+
+
+@runtime_checkable
+class VideoAssemblyPlanner(Protocol):
+    def plan(
+        self,
+        scenes: Sequence[SceneSpec],
+        selected_clips: Sequence[SelectedClip],
+    ) -> Sequence[VideoAssemblySegment]:
+        """Create metadata-only timeline segments."""
         ...
 
 

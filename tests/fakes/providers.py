@@ -12,6 +12,7 @@ from backend.app.domain import (
     SelectedClip,
     StockQuerySpec,
     VersionedAsset,
+    VideoAssemblySegment,
 )
 from backend.app.ports import (
     ClipRetrievalProvider,
@@ -23,6 +24,7 @@ from backend.app.ports import (
     StockProvider,
     SubtitleBuilder,
     TTSProvider,
+    VideoAssemblyPlanner,
 )
 
 
@@ -134,6 +136,25 @@ class FakeClipSelector(ClipSelector):
             )
             for candidate in captured
         )
+
+
+class FakeVideoAssemblyPlanner(VideoAssemblyPlanner):
+    def __init__(
+        self,
+        segments: Sequence[VideoAssemblySegment] = (),
+    ) -> None:
+        self._segments = tuple(segments)
+        self.calls: list[
+            tuple[tuple[SceneSpec, ...], tuple[SelectedClip, ...]]
+        ] = []
+
+    def plan(
+        self,
+        scenes: Sequence[SceneSpec],
+        selected_clips: Sequence[SelectedClip],
+    ) -> Sequence[VideoAssemblySegment]:
+        self.calls.append((tuple(scenes), tuple(selected_clips)))
+        return self._segments
 
 
 class FakeTTSProvider(TTSProvider):

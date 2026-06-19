@@ -17,20 +17,24 @@ from backend.app.application.use_cases import (
     CreateSelectedClipSet,
     CreateScriptDraft,
     CreateStockPlan,
+    CreateVideoAssemblyPlan,
     GenerateSceneTable,
     GenerateScriptDraft,
     GenerateStockPlan,
+    GenerateVideoAssemblyPlan,
     GetLatestClipCandidateSet,
     GetLatestSceneTable,
     GetLatestSelectedClipSet,
     GetLatestScriptDraft,
     GetLatestStockPlan,
+    GetLatestVideoAssemblyPlan,
     GetRun,
     ListSceneTables,
     ListSelectedClipSets,
     ListScriptDrafts,
     ListClipCandidateSets,
     ListStockPlans,
+    ListVideoAssemblyPlans,
     MarkFailed,
     MarkScenesReady,
     MarkScriptReady,
@@ -50,6 +54,7 @@ from backend.app.ports import (
     SubtitleBuilder,
     TTSProvider,
     VersionedAssetRepository,
+    VideoAssemblyPlanner,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -116,6 +121,7 @@ def test_provider_interfaces_live_in_ports() -> None:
         StockClipPlanner,
         ClipRetrievalProvider,
         ClipSelector,
+        VideoAssemblyPlanner,
         StockProvider,
         TTSProvider,
         SubtitleBuilder,
@@ -211,6 +217,19 @@ def test_stock_asset_use_cases_depend_only_on_expected_ports_and_factories() -> 
             "asset_repository": VersionedAssetRepository,
             "storage": StoragePort,
         },
+        CreateVideoAssemblyPlan: {
+            "run_repository": RunRepository,
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+            "asset_id_factory": Callable[[], str] | None,
+        },
+        ListVideoAssemblyPlans: {
+            "asset_repository": VersionedAssetRepository
+        },
+        GetLatestVideoAssemblyPlan: {
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+        },
     }
 
     for use_case, constructor_hints in expected.items():
@@ -286,6 +305,26 @@ def test_deterministic_clip_selector_import_confined_to_composition_root() -> No
     assert not offenders
 
 
+def test_deterministic_video_assembly_planner_import_confined_to_composition_root() -> None:
+    allowed = APP_ROOT / "main.py"
+    offenders: list[Path] = []
+
+    for path in _python_files(APP_ROOT):
+        relative_parts = path.relative_to(APP_ROOT).parts
+        if "infrastructure" in relative_parts:
+            continue
+        if path == allowed:
+            continue
+        if _imports_symbol(
+            path,
+            module_prefix="backend.app.infrastructure.generation",
+            symbol="DeterministicVideoAssemblyPlanner",
+        ):
+            offenders.append(path)
+
+    assert not offenders
+
+
 def test_generation_use_cases_depend_on_ports_and_create_use_cases() -> None:
     expected: dict[type, dict[str, type]] = {
         GenerateScriptDraft: {
@@ -315,6 +354,13 @@ def test_generation_use_cases_depend_on_ports_and_create_use_cases() -> None:
             "clip_selector": ClipSelector,
             "get_latest_clip_candidate_set": GetLatestClipCandidateSet,
             "create_selected_clip_set": CreateSelectedClipSet,
+        },
+        GenerateVideoAssemblyPlan: {
+            "run_repository": RunRepository,
+            "video_assembly_planner": VideoAssemblyPlanner,
+            "get_latest_selected_clip_set": GetLatestSelectedClipSet,
+            "get_latest_scene_table": GetLatestSceneTable,
+            "create_video_assembly_plan": CreateVideoAssemblyPlan,
         },
     }
 

@@ -1,4 +1,4 @@
-"""End-to-end happy-path test for the prompt -> script -> scenes workflow (Slice 7).
+"""End-to-end happy path through metadata-only video assembly planning.
 
 Drives the whole HTTP flow against the default deterministic generation adapters
 (``EchoScriptDraftGenerator`` / ``StubSceneTablePlanner``) with in-memory
@@ -194,6 +194,74 @@ def test_prompt_to_scenes_happy_path_advances_through_every_status() -> None:
     assert first_selected["selection_reason"] == (
         "first_candidate_for_scene_query"
     )
+
+    # 13. Generate a metadata-only assembly plan from the latest selected clips
+    # and scene table. No media URL is opened and the run remains approved.
+    assembly = client.post(
+        f"/runs/{run_id}/video-assembly-plans/generate"
+    )
+    assert assembly.status_code == status.HTTP_201_CREATED
+    assembly_body = assembly.json()
+    assert assembly_body["kind"] == "video_assembly_plan"
+    assert assembly_body["version"] == 1
+    metadata = assembly_body["metadata"]
+    assert metadata["source"] == "generated"
+    assert metadata["aspect_ratio"] == "16:9"
+    assert metadata["render_intent"] == "voiceover_b_roll"
+    assert metadata["scene_table_asset_id"] == latest_body["asset"]["asset_id"]
+    assert metadata["scene_table_version"] == "1"
+    assert metadata["selected_clips_asset_id"] == (
+        latest_selected_body["asset"]["asset_id"]
+    )
+    assert metadata["selected_clips_version"] == "1"
+
+    # 14. Parsed segments preserve scene-table order and combine scene timing
+    # with selected provider metadata. The hints are descriptive strings only.
+    latest_assembly = client.get(
+        f"/runs/{run_id}/video-assembly-plans/latest"
+    )
+    assert latest_assembly.status_code == status.HTTP_200_OK
+    latest_assembly_body = latest_assembly.json()
+    assert latest_assembly_body["asset"] == assembly_body
+    segments = latest_assembly_body["segments"]
+    assert segments, "expected non-empty assembly segments"
+
+    scenes_by_id = {
+        scene["scene_id"]: scene for scene in latest_body["scenes"]
+    }
+    selected_by_id = {
+        (clip["provider"], clip["provider_clip_id"]): clip
+        for clip in latest_selected_body["selected_clips"]
+    }
+    expected_scene_order = [
+        scene["scene_id"]
+        for scene in latest_body["scenes"]
+        if scene["scene_id"] in selected_scene_ids
+    ]
+    assert [segment["scene_id"] for segment in segments] == expected_scene_order
+    assert [segment["order_index"] for segment in segments] == list(
+        range(len(segments))
+    )
+
+    for segment in segments:
+        scene = scenes_by_id[segment["scene_id"]]
+        selected_clip = selected_by_id[
+            (segment["provider"], segment["provider_clip_id"])
+        ]
+        assert segment["narration"] == scene["narration"]
+        assert segment["visual_query"] == scene["visual_query"]
+        assert segment["target_duration_seconds"] == scene["duration_seconds"]
+        assert segment["query_text"] == selected_clip["query_text"]
+        assert segment["source_duration_seconds"] == (
+            selected_clip["duration_seconds"]
+        )
+        assert segment["title"] == selected_clip["title"]
+        assert segment["selection_reason"] == selected_clip["selection_reason"]
+        assert segment["preview_url"].startswith("memory://")
+        assert segment["source_url"].startswith("memory://")
+        assert segment["transition"] == "cut"
+        assert segment["continuity_note"] == "ordered_by_scene_table"
+
     final_run = client.get(f"/runs/{run_id}").json()
     assert final_run["status"] == "scenes_approved"
     assert final_run["status"] != "rendered"
