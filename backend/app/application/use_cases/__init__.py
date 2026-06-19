@@ -18,6 +18,7 @@ from backend.app.application.use_cases.scene_assets import (
 )
 from backend.app.application.use_cases.script_assets import (
     CreateScriptDraft,
+    GenerateScriptDraft,
     GetLatestScriptDraft,
     ListScriptDrafts,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "CreateRun",
     "CreateSceneTable",
     "CreateScriptDraft",
+    "GenerateScriptDraft",
     "GetLatestSceneTable",
     "GetLatestScriptDraft",
     "GetRun",
