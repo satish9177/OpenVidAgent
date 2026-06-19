@@ -23,6 +23,13 @@ from backend.app.application.use_cases.script_assets import (
     GetLatestScriptDraft,
     ListScriptDrafts,
 )
+from backend.app.application.use_cases.stock_assets import (
+    CreateStockPlan,
+    GenerateStockPlan,
+    GetLatestStockPlan,
+    ListStockPlans,
+    StockPlan,
+)
 
 __all__ = [
     "ApproveScenes",
@@ -30,17 +37,22 @@ __all__ = [
     "CreateRun",
     "CreateSceneTable",
     "CreateScriptDraft",
+    "CreateStockPlan",
     "GenerateSceneTable",
     "GenerateScriptDraft",
+    "GenerateStockPlan",
     "GetLatestSceneTable",
     "GetLatestScriptDraft",
+    "GetLatestStockPlan",
     "GetRun",
     "HealthCheck",
     "HealthStatus",
     "ListSceneTables",
     "ListScriptDrafts",
+    "ListStockPlans",
     "MarkFailed",
     "MarkScenesReady",
     "MarkScriptReady",
     "SceneTable",
+    "StockPlan",
 ]

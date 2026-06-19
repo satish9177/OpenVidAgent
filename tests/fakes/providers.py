@@ -4,11 +4,18 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from backend.app.domain import AssetKind, RenderSpec, SceneSpec, VersionedAsset
+from backend.app.domain import (
+    AssetKind,
+    RenderSpec,
+    SceneSpec,
+    StockQuerySpec,
+    VersionedAsset,
+)
 from backend.app.ports import (
     Renderer,
     SceneTablePlanner,
     ScriptDraftGenerator,
+    StockClipPlanner,
     StockProvider,
     SubtitleBuilder,
     TTSProvider,
@@ -41,6 +48,21 @@ class FakeStockProvider(StockProvider):
                 version=1,
                 uri=f"memory://clips/{scene.scene_id}.mp4",
             ),
+        )
+
+
+class FakeStockClipPlanner(StockClipPlanner):
+    def plan_stock_clips(
+        self, scenes: Sequence[SceneSpec], language: str
+    ) -> Sequence[StockQuerySpec]:
+        return tuple(
+            StockQuerySpec(
+                scene_id=scene.scene_id,
+                query=scene.visual_query,
+                visual_intent=scene.narration,
+                duration_seconds=scene.duration_seconds,
+            )
+            for scene in scenes
         )
 
 
