@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+from collections.abc import Callable
 from pathlib import Path
 from typing import get_type_hints
 
@@ -13,13 +14,17 @@ from backend.app.application.use_cases import (
     CreateRun,
     CreateSceneTable,
     CreateScriptDraft,
+    CreateStockPlan,
     GenerateSceneTable,
     GenerateScriptDraft,
+    GenerateStockPlan,
     GetLatestSceneTable,
     GetLatestScriptDraft,
+    GetLatestStockPlan,
     GetRun,
     ListSceneTables,
     ListScriptDrafts,
+    ListStockPlans,
     MarkFailed,
     MarkScenesReady,
     MarkScriptReady,
@@ -159,11 +164,52 @@ def test_asset_use_cases_depend_only_on_port_types() -> None:
             assert hints[name] is port, (use_case.__name__, name)
 
 
+def test_stock_asset_use_cases_depend_only_on_expected_ports_and_factories() -> None:
+    expected: dict[type, dict[str, object]] = {
+        CreateStockPlan: {
+            "run_repository": RunRepository,
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+            "asset_id_factory": Callable[[], str] | None,
+        },
+        ListStockPlans: {"asset_repository": VersionedAssetRepository},
+        GetLatestStockPlan: {
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+        },
+    }
+
+    for use_case, constructor_hints in expected.items():
+        hints = get_type_hints(use_case.__init__)
+        hints.pop("return", None)
+        assert hints == constructor_hints, use_case.__name__
+
+
 def test_assets_route_imports_use_cases_not_infrastructure() -> None:
     imports = _imports_for(APP_ROOT / "api" / "assets.py")
 
     assert _matching_imports(imports, {"backend.app.application"})
     assert not _matching_imports(imports, {"backend.app.infrastructure"})
+
+
+def test_stub_stock_clip_planner_import_confined_to_composition_root() -> None:
+    allowed = APP_ROOT / "main.py"
+    offenders: list[Path] = []
+
+    for path in _python_files(APP_ROOT):
+        relative_parts = path.relative_to(APP_ROOT).parts
+        if "infrastructure" in relative_parts:
+            continue
+        if path == allowed:
+            continue
+        if _imports_symbol(
+            path,
+            module_prefix="backend.app.infrastructure.generation",
+            symbol="StubStockClipPlanner",
+        ):
+            offenders.append(path)
+
+    assert not offenders
 
 
 def test_generation_use_cases_depend_on_ports_and_create_use_cases() -> None:
@@ -177,6 +223,12 @@ def test_generation_use_cases_depend_on_ports_and_create_use_cases() -> None:
             "run_repository": RunRepository,
             "scene_planner": SceneTablePlanner,
             "create_scene_table": CreateSceneTable,
+        },
+        GenerateStockPlan: {
+            "run_repository": RunRepository,
+            "stock_planner": StockClipPlanner,
+            "get_latest_scene_table": GetLatestSceneTable,
+            "create_stock_plan": CreateStockPlan,
         },
     }
 
@@ -231,6 +283,27 @@ def _imports_for(path: Path) -> set[str]:
             imports.add(node.module)
 
     return imports
+
+
+def _imports_symbol(path: Path, module_prefix: str, symbol: str) -> bool:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            if node.module == module_prefix or node.module.startswith(
+                f"{module_prefix}."
+            ):
+                if any(alias.name == symbol for alias in node.names):
+                    return True
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if (
+                    alias.name == f"{module_prefix}.{symbol}"
+                    or alias.name.endswith(f".{symbol}")
+                ):
+                    return True
+
+    return False
 
 
 def _matching_imports(imports: set[str], forbidden: set[str]) -> set[str]:

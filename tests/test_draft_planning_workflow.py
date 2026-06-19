@@ -91,3 +91,30 @@ def test_prompt_to_scenes_happy_path_advances_through_every_status() -> None:
     approved_scenes = client.post(f"/runs/{run_id}/approve-scenes")
     assert approved_scenes.status_code == status.HTTP_200_OK
     assert approved_scenes.json()["status"] == "scenes_approved"
+
+    # 7. Generate a stock plan -> asset-only; run stays `scenes_approved`.
+    stock_plan = client.post(f"/runs/{run_id}/stock-plans/generate")
+    assert stock_plan.status_code == status.HTTP_201_CREATED
+    stock_body = stock_plan.json()
+    assert stock_body["kind"] == "stock_plan"
+    assert stock_body["version"] == 1
+    assert stock_body["metadata"]["source"] == "generated"
+    assert client.get(f"/runs/{run_id}").json()["status"] == "scenes_approved"
+
+    # 8. The generated stock plan is retrievable as parsed query specs. The
+    # deterministic planner adds no provider hint, downloads no clip, and leaves
+    # the run unrendered for the later media phases.
+    latest_stock = client.get(f"/runs/{run_id}/stock-plans/latest")
+    assert latest_stock.status_code == status.HTTP_200_OK
+    latest_stock_body = latest_stock.json()
+    assert latest_stock_body["asset"]["version"] == 1
+    assert latest_stock_body["asset"]["metadata"]["source"] == "generated"
+    assert latest_stock_body["queries"], "expected non-empty parsed queries"
+    first_query = latest_stock_body["queries"][0]
+    assert first_query["scene_id"]
+    assert first_query["query"]
+    assert first_query["visual_intent"]
+    assert first_query["duration_seconds"] > 0
+    assert "provider_hint" in first_query
+    assert first_query["provider_hint"] is None
+    assert client.get(f"/runs/{run_id}").json()["status"] == "scenes_approved"

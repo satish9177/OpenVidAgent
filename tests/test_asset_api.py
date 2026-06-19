@@ -523,6 +523,15 @@ def test_generate_stock_plan_invalid_state_returns_409() -> None:
     assert response.json()["status"] == "created"
 
 
+def test_generate_stock_plan_without_scene_table_returns_404_after_status_guard() -> None:
+    client = _client(RunStatus.SCENES_APPROVED)
+
+    response = client.post("/runs/run-1/stock-plans/generate")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["kind"] == "scene_table"
+
+
 def test_get_stock_plan_list_returns_ordered_versions() -> None:
     client = _client(RunStatus.SCRIPT_APPROVED)
     _approve_scenes_after_scene_table(client)
