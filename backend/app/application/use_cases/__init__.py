@@ -12,6 +12,7 @@ from backend.app.application.use_cases.run_lifecycle import (
 )
 from backend.app.application.use_cases.scene_assets import (
     CreateSceneTable,
+    GenerateSceneTable,
     GetLatestSceneTable,
     ListSceneTables,
     SceneTable,
@@ -29,6 +30,7 @@ __all__ = [
     "CreateRun",
     "CreateSceneTable",
     "CreateScriptDraft",
+    "GenerateSceneTable",
     "GenerateScriptDraft",
     "GetLatestSceneTable",
     "GetLatestScriptDraft",

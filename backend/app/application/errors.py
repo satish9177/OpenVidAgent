@@ -41,3 +41,19 @@ class AssetCreationRejectedError(ValueError):
         self.run_id = run_id
         self.kind = kind
         self.status = status
+
+
+class ApprovedScriptRequiredError(ValueError):
+    """Raised when scene generation runs before the run has an approved script.
+
+    A precondition failure distinct from the D7 status guard
+    (``AssetCreationRejectedError``): the run may be in an otherwise valid status
+    but lacks the ``approved_script`` text the planner needs. Intended to map to a
+    409 in the API layer (Slice 6).
+    """
+
+    def __init__(self, run_id: str) -> None:
+        super().__init__(
+            f"Run {run_id!r} has no approved script to plan scenes from"
+        )
+        self.run_id = run_id

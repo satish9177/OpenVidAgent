@@ -1,12 +1,16 @@
 """Scene table asset use-cases.
 
-The caller supplies the ``SceneSpec`` sequence (no LLM scene generation in this
-phase). These use-cases compose the ``RunRepository`` (lifecycle),
-``StoragePort`` (durable bytes), and ``VersionedAssetRepository`` (version
-index/metadata) ports and enforce the D7 scene-table rule in the application
-layer, never in API routes. The scene table is stored as one versioned JSON
-asset (D3); JSON (de)serialization stays in the application (D4), keeping the
-domain ``SceneSpec`` serialization-free.
+``CreateSceneTable`` persists a caller-supplied ``SceneSpec`` sequence;
+``GenerateSceneTable`` first obtains that sequence from the ``SceneTablePlanner``
+port (a deterministic adapter or fake, never a real provider in this phase) and
+then composes ``CreateSceneTable``. These use-cases compose the ``RunRepository``
+(lifecycle), ``StoragePort`` (durable bytes), and ``VersionedAssetRepository``
+(version index/metadata) ports and enforce the D7 scene-table rule in the
+application layer, never in API routes. Generated tables are tagged
+``source="generated"`` to distinguish them from manual (``source="manual"``)
+entries. The scene table is stored as one versioned JSON asset (D3); JSON
+(de)serialization stays in the application (D4), keeping the domain ``SceneSpec``
+serialization-free.
 """
 
 from __future__ import annotations
@@ -17,12 +21,18 @@ from typing import NamedTuple
 from uuid import uuid4
 
 from backend.app.application.errors import (
+    ApprovedScriptRequiredError,
     AssetCreationRejectedError,
     AssetNotFoundError,
     RunNotFoundError,
 )
 from backend.app.domain import AssetKind, Run, RunStatus, SceneSpec, VersionedAsset
-from backend.app.ports import RunRepository, StoragePort, VersionedAssetRepository
+from backend.app.ports import (
+    RunRepository,
+    SceneTablePlanner,
+    StoragePort,
+    VersionedAssetRepository,
+)
 
 AssetIdFactory = Callable[[], str]
 
@@ -55,7 +65,7 @@ class CreateSceneTable:
         self._asset_id_factory = asset_id_factory or _new_asset_id
 
     def execute(
-        self, run_id: str, scenes: Sequence[SceneSpec]
+        self, run_id: str, scenes: Sequence[SceneSpec], source: str = "manual"
     ) -> VersionedAsset:
         run = _require_run(self._run_repository, run_id)
         if run.status not in _SCENE_TABLE_ALLOWED:
@@ -71,7 +81,7 @@ class CreateSceneTable:
             kind=AssetKind.SCENE_TABLE,
             version=version,
             uri="",
-            metadata={"source": "manual"},
+            metadata={"source": source},
         )
         stored = self._storage.save_asset(table, _scenes_to_bytes(scenes))
         self._asset_repository.save(run_id, stored)
@@ -83,6 +93,39 @@ class CreateSceneTable:
             self._run_repository.save(run.mark_scenes_ready())
 
         return stored
+
+
+class GenerateSceneTable:
+    """Plan a scene table from the approved script, then persist and transition.
+
+    Composes the ``SceneTablePlanner`` port (approved script + language -> scene
+    specs) with ``CreateSceneTable``, which owns persistence, versioning, and the
+    D7 lifecycle transition. The approved script and language are read off the run
+    aggregate (no storage round-trip); the resulting asset is tagged
+    ``source="generated"``. A run missing its ``approved_script`` is a precondition
+    failure (``ApprovedScriptRequiredError``), kept distinct from the D7 status
+    guard so the API can map it to its own response.
+    """
+
+    def __init__(
+        self,
+        run_repository: RunRepository,
+        scene_planner: SceneTablePlanner,
+        create_scene_table: CreateSceneTable,
+    ) -> None:
+        self._run_repository = run_repository
+        self._scene_planner = scene_planner
+        self._create_scene_table = create_scene_table
+
+    def execute(self, run_id: str) -> VersionedAsset:
+        run = _require_run(self._run_repository, run_id)
+        approved_script = run.approved_script
+        if approved_script is None:
+            raise ApprovedScriptRequiredError(run_id)
+        scenes = self._scene_planner.plan(approved_script, run.language)
+        return self._create_scene_table.execute(
+            run_id, scenes, source="generated"
+        )
 
 
 class ListSceneTables:
