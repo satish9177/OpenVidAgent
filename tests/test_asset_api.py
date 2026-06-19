@@ -6,14 +6,20 @@ lifespan disk/database initialization.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from fastapi import status
 from fastapi.testclient import TestClient
 
 from backend.app.config.settings import Settings
-from backend.app.domain import Run, RunStatus
+from backend.app.domain import Run, RunStatus, SceneSpec
+from backend.app.infrastructure.generation import (
+    EchoScriptDraftGenerator,
+    StubSceneTablePlanner,
+)
 from backend.app.main import create_app
+from backend.app.ports import SceneTablePlanner, ScriptDraftGenerator
 from tests.fakes import (
     InMemoryRunRepository,
     InMemoryStorage,
@@ -21,14 +27,30 @@ from tests.fakes import (
 )
 
 
-def _client(run_status: RunStatus = RunStatus.CREATED, run_id: str = "run-1") -> TestClient:
+def _client(
+    run_status: RunStatus = RunStatus.CREATED,
+    run_id: str = "run-1",
+    *,
+    approved_script: str | None = None,
+    script_generator: ScriptDraftGenerator | None = None,
+    scene_planner: SceneTablePlanner | None = None,
+) -> TestClient:
     runs = InMemoryRunRepository()
-    runs.save(Run(run_id=run_id, prompt="prompt", status=run_status))
+    runs.save(
+        Run(
+            run_id=run_id,
+            prompt="prompt",
+            status=run_status,
+            approved_script=approved_script,
+        )
+    )
     return TestClient(
         create_app(
             run_repository=runs,
             versioned_asset_repository=InMemoryVersionedAssetRepository(),
             storage=InMemoryStorage(),
+            script_generator=script_generator,
+            scene_planner=scene_planner,
         )
     )
 
@@ -267,3 +289,148 @@ def test_default_infra_initializes_database_and_storage_root(
 
     assert database_path.exists()
     assert storage_root.exists()
+
+
+# --- generation endpoints (Slice 6) ---
+
+
+class _SpyScriptGenerator(ScriptDraftGenerator):
+    """Records calls so a test can prove the injected generator was used."""
+
+    def __init__(self, script: str = "# Injected generated script") -> None:
+        self._script = script
+        self.calls: list[tuple[str, str]] = []
+
+    def generate(self, prompt: str, language: str) -> str:
+        self.calls.append((prompt, language))
+        return self._script
+
+
+class _SpyScenePlanner(SceneTablePlanner):
+    """Records calls so a test can prove the injected planner was used."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    def plan(self, approved_script: str, language: str) -> Sequence[SceneSpec]:
+        self.calls.append((approved_script, language))
+        return (
+            SceneSpec(
+                scene_id="injected-scene",
+                narration="injected narration",
+                visual_query="injected query",
+                duration_seconds=3.0,
+            ),
+        )
+
+
+def test_generate_script_draft_creates_generated_asset_and_advances_run() -> None:
+    client = _client(RunStatus.CREATED)
+
+    response = client.post("/runs/run-1/script-drafts/generate")
+
+    assert response.status_code == status.HTTP_201_CREATED
+    body = response.json()
+    assert body["kind"] == "script"
+    assert body["version"] == 1
+    assert body["uri"]
+    assert body["metadata"]["source"] == "generated"
+    # The route advanced the lifecycle via the use-case, not itself.
+    assert client.get("/runs/run-1").json()["status"] == "script_ready"
+
+
+def test_generate_script_draft_uses_injected_generator() -> None:
+    spy = _SpyScriptGenerator()
+    client = _client(RunStatus.CREATED, script_generator=spy)
+
+    response = client.post("/runs/run-1/script-drafts/generate")
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.json()["metadata"]["source"] == "generated"
+    # The run's prompt/language were forwarded through the use-case to the
+    # injected generator, proving no infrastructure default was substituted.
+    assert spy.calls == [("prompt", "en")]
+
+
+def test_generate_script_draft_missing_run_returns_404() -> None:
+    client = _client(RunStatus.CREATED)
+
+    response = client.post("/runs/missing/script-drafts/generate")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_generate_script_draft_invalid_state_returns_409() -> None:
+    client = _client(RunStatus.SCRIPT_APPROVED)
+
+    response = client.post("/runs/run-1/script-drafts/generate")
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+
+
+def test_generate_scene_table_creates_generated_asset_and_advances_run() -> None:
+    client = _client(RunStatus.SCRIPT_APPROVED, approved_script="approved script")
+
+    response = client.post("/runs/run-1/scene-tables/generate")
+
+    assert response.status_code == status.HTTP_201_CREATED
+    body = response.json()
+    assert body["kind"] == "scene_table"
+    assert body["version"] == 1
+    assert body["metadata"]["source"] == "generated"
+    assert client.get("/runs/run-1").json()["status"] == "scenes_ready"
+
+
+def test_generate_scene_table_uses_injected_planner() -> None:
+    spy = _SpyScenePlanner()
+    client = _client(
+        RunStatus.SCRIPT_APPROVED,
+        approved_script="approved body",
+        scene_planner=spy,
+    )
+
+    response = client.post("/runs/run-1/scene-tables/generate")
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.json()["metadata"]["source"] == "generated"
+    assert spy.calls == [("approved body", "en")]
+
+
+def test_generate_scene_table_missing_run_returns_404() -> None:
+    client = _client(RunStatus.SCRIPT_APPROVED, approved_script="approved script")
+
+    response = client.post("/runs/missing/scene-tables/generate")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_generate_scene_table_invalid_state_returns_409() -> None:
+    # CREATED is not a valid state for scene-table creation (D7 guard).
+    client = _client(RunStatus.CREATED, approved_script="approved script")
+
+    response = client.post("/runs/run-1/scene-tables/generate")
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+
+
+def test_generate_scene_table_missing_approved_script_returns_409() -> None:
+    # Valid status but no approved script -> ApprovedScriptRequiredError -> 409.
+    client = _client(RunStatus.SCRIPT_APPROVED, approved_script=None)
+
+    response = client.post("/runs/run-1/scene-tables/generate")
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response.json()["run_id"] == "run-1"
+
+
+def test_default_app_wires_deterministic_generation_adapters() -> None:
+    # All infra injected except the generators, which must default to the
+    # deterministic local adapters (no external calls, no SDKs).
+    app = create_app(
+        run_repository=InMemoryRunRepository(),
+        versioned_asset_repository=InMemoryVersionedAssetRepository(),
+        storage=InMemoryStorage(),
+    )
+
+    assert isinstance(app.state.script_generator, EchoScriptDraftGenerator)
+    assert isinstance(app.state.scene_planner, StubSceneTablePlanner)

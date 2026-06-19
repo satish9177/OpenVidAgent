@@ -23,8 +23,18 @@ from backend.app.infrastructure.db import (
     SQLiteVersionedAssetRepository,
     initialize_database,
 )
+from backend.app.infrastructure.generation import (
+    EchoScriptDraftGenerator,
+    StubSceneTablePlanner,
+)
 from backend.app.infrastructure.storage import LocalFilesystemStorage
-from backend.app.ports import RunRepository, StoragePort, VersionedAssetRepository
+from backend.app.ports import (
+    RunRepository,
+    SceneTablePlanner,
+    ScriptDraftGenerator,
+    StoragePort,
+    VersionedAssetRepository,
+)
 
 
 def create_app(
@@ -33,6 +43,8 @@ def create_app(
     run_repository: RunRepository | None = None,
     versioned_asset_repository: VersionedAssetRepository | None = None,
     storage: StoragePort | None = None,
+    script_generator: ScriptDraftGenerator | None = None,
+    scene_planner: SceneTablePlanner | None = None,
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
 
@@ -51,6 +63,13 @@ def create_app(
         )
     if storage is None:
         storage = LocalFilesystemStorage(resolved_settings.storage_root)
+
+    # Generation adapters are pure/deterministic (no disk, network, or SDK), so
+    # defaulting them never affects the database/storage lifespan decision above.
+    if script_generator is None:
+        script_generator = EchoScriptDraftGenerator()
+    if scene_planner is None:
+        scene_planner = StubSceneTablePlanner()
 
     lifespan = None
     if needs_database or needs_storage_root:
@@ -73,6 +92,8 @@ def create_app(
     app.state.run_repository = run_repository
     app.state.versioned_asset_repository = versioned_asset_repository
     app.state.storage = storage
+    app.state.script_generator = script_generator
+    app.state.scene_planner = scene_planner
     app.include_router(health_router)
     app.include_router(runs_router)
     app.include_router(assets_router)

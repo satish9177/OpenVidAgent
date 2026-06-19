@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from backend.app.application.errors import (
+    ApprovedScriptRequiredError,
     AssetCreationRejectedError,
     AssetNotFoundError,
     RunNotFoundError,
@@ -22,6 +23,9 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AssetNotFoundError, _handle_asset_not_found)
     app.add_exception_handler(
         AssetCreationRejectedError, _handle_asset_creation_rejected
+    )
+    app.add_exception_handler(
+        ApprovedScriptRequiredError, _handle_approved_script_required
     )
     app.add_exception_handler(InvalidRunTransitionError, _handle_invalid_transition)
 
@@ -59,6 +63,15 @@ async def _handle_asset_creation_rejected(
             "kind": exc.kind.value,
             "status": exc.status.value,
         },
+    )
+
+
+async def _handle_approved_script_required(
+    request: Request, exc: ApprovedScriptRequiredError
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={"detail": str(exc), "run_id": exc.run_id},
     )
 
 

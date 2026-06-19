@@ -15,6 +15,8 @@ from pydantic import BaseModel
 from backend.app.application.use_cases import (
     CreateSceneTable,
     CreateScriptDraft,
+    GenerateSceneTable,
+    GenerateScriptDraft,
     GetLatestSceneTable,
     GetLatestScriptDraft,
     ListSceneTables,
@@ -22,7 +24,13 @@ from backend.app.application.use_cases import (
     SceneTable,
 )
 from backend.app.domain import SceneSpec, VersionedAsset
-from backend.app.ports import RunRepository, StoragePort, VersionedAssetRepository
+from backend.app.ports import (
+    RunRepository,
+    SceneTablePlanner,
+    ScriptDraftGenerator,
+    StoragePort,
+    VersionedAssetRepository,
+)
 
 router = APIRouter(prefix="/runs", tags=["assets"])
 
@@ -42,6 +50,16 @@ def get_versioned_asset_repository(
 def get_storage(request: Request) -> StoragePort:
     """Resolve the storage adapter wired at composition time."""
     return request.app.state.storage
+
+
+def get_script_generator(request: Request) -> ScriptDraftGenerator:
+    """Resolve the script-draft generator wired at composition time."""
+    return request.app.state.script_generator
+
+
+def get_scene_planner(request: Request) -> SceneTablePlanner:
+    """Resolve the scene-table planner wired at composition time."""
+    return request.app.state.scene_planner
 
 
 class CreateScriptDraftRequest(BaseModel):
@@ -126,6 +144,29 @@ def create_script_draft(
     return AssetResponse.from_asset(asset)
 
 
+@router.post(
+    "/{run_id}/script-drafts/generate",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AssetResponse,
+)
+def generate_script_draft(
+    run_id: str,
+    run_repository: RunRepository = Depends(get_run_repository),
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+    script_generator: ScriptDraftGenerator = Depends(get_script_generator),
+) -> AssetResponse:
+    create_script_draft = CreateScriptDraft(
+        run_repository, asset_repository, storage
+    )
+    asset = GenerateScriptDraft(
+        run_repository, script_generator, create_script_draft
+    ).execute(run_id)
+    return AssetResponse.from_asset(asset)
+
+
 @router.get("/{run_id}/script-drafts", response_model=list[AssetResponse])
 def list_script_drafts(
     run_id: str,
@@ -170,6 +211,29 @@ def create_scene_table(
         asset=AssetResponse.from_asset(asset),
         scenes=[SceneSpecModel.from_domain(scene) for scene in scenes],
     )
+
+
+@router.post(
+    "/{run_id}/scene-tables/generate",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AssetResponse,
+)
+def generate_scene_table(
+    run_id: str,
+    run_repository: RunRepository = Depends(get_run_repository),
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+    scene_planner: SceneTablePlanner = Depends(get_scene_planner),
+) -> AssetResponse:
+    create_scene_table = CreateSceneTable(
+        run_repository, asset_repository, storage
+    )
+    asset = GenerateSceneTable(
+        run_repository, scene_planner, create_scene_table
+    ).execute(run_id)
+    return AssetResponse.from_asset(asset)
 
 
 @router.get("/{run_id}/scene-tables", response_model=list[AssetResponse])
