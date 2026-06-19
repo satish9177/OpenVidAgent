@@ -18,9 +18,11 @@ from backend.app.domain import (
     Run,
     RunStatus,
     SceneSpec,
+    SelectedClip,
     StockQuerySpec,
 )
 from backend.app.infrastructure.generation import (
+    DeterministicClipSelector,
     EchoScriptDraftGenerator,
     StubClipRetrievalProvider,
     StubSceneTablePlanner,
@@ -29,6 +31,7 @@ from backend.app.infrastructure.generation import (
 from backend.app.main import create_app
 from backend.app.ports import (
     ClipRetrievalProvider,
+    ClipSelector,
     SceneTablePlanner,
     ScriptDraftGenerator,
     StockClipPlanner,
@@ -49,6 +52,7 @@ def _client(
     scene_planner: SceneTablePlanner | None = None,
     stock_planner: StockClipPlanner | None = None,
     clip_retrieval_provider: ClipRetrievalProvider | None = None,
+    clip_selector: ClipSelector | None = None,
 ) -> TestClient:
     runs = InMemoryRunRepository()
     runs.save(
@@ -68,6 +72,7 @@ def _client(
             scene_planner=scene_planner,
             stock_planner=stock_planner,
             clip_retrieval_provider=clip_retrieval_provider,
+            clip_selector=clip_selector,
         )
     )
 
@@ -397,6 +402,35 @@ class _SpyClipRetrievalProvider(ClipRetrievalProvider):
                 width=1920,
                 height=1080,
             ),
+        )
+
+
+class _SpyClipSelector(ClipSelector):
+    """Records calls so a test can prove the injected selector was used."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[ClipCandidate, ...]] = []
+
+    def select(
+        self, candidates: Sequence[ClipCandidate]
+    ) -> Sequence[SelectedClip]:
+        captured = tuple(candidates)
+        self.calls.append(captured)
+        return tuple(
+            SelectedClip(
+                scene_id=candidate.scene_id,
+                query_text=candidate.query_text,
+                provider=candidate.provider,
+                provider_clip_id=candidate.provider_clip_id,
+                title=candidate.title,
+                preview_url=candidate.preview_url,
+                source_url=candidate.source_url,
+                duration_seconds=candidate.duration_seconds,
+                width=candidate.width,
+                height=candidate.height,
+                selection_reason="spy_selection",
+            )
+            for candidate in captured
         )
 
 
@@ -753,6 +787,149 @@ def test_latest_clip_candidates_when_none_returns_404() -> None:
     assert response.json()["kind"] == "clip_candidates"
 
 
+def test_select_clips_creates_selected_asset_and_keeps_run_approved() -> None:
+    stock_spy = _SpyStockPlanner()
+    clip_spy = _SpyClipRetrievalProvider()
+    selector_spy = _SpyClipSelector()
+    client = _client(
+        RunStatus.SCRIPT_APPROVED,
+        stock_planner=stock_spy,
+        clip_retrieval_provider=clip_spy,
+        clip_selector=selector_spy,
+    )
+    _approve_scenes_after_scene_table(client)
+    client.post("/runs/run-1/stock-plans/generate")
+    client.post("/runs/run-1/clip-candidates/retrieve")
+
+    response = client.post("/runs/run-1/selected-clips/select")
+
+    assert response.status_code == status.HTTP_201_CREATED
+    body = response.json()
+    assert body["kind"] == "selected_clips"
+    assert body["version"] == 1
+    assert body["metadata"]["source"] == "selected"
+    assert client.get("/runs/run-1").json()["status"] == "scenes_approved"
+    assert [candidate.scene_id for candidate in selector_spy.calls[0]] == [
+        "stock-scene-1",
+        "stock-scene-2",
+    ]
+
+
+def test_select_clips_missing_run_returns_404() -> None:
+    selector_spy = _SpyClipSelector()
+    client = _client(
+        RunStatus.SCENES_APPROVED,
+        clip_selector=selector_spy,
+    )
+
+    response = client.post("/runs/missing/selected-clips/select")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert selector_spy.calls == []
+
+
+def test_select_clips_invalid_state_returns_409() -> None:
+    selector_spy = _SpyClipSelector()
+    client = _client(RunStatus.CREATED, clip_selector=selector_spy)
+
+    response = client.post("/runs/run-1/selected-clips/select")
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response.json()["kind"] == "selected_clips"
+    assert response.json()["status"] == "created"
+    assert selector_spy.calls == []
+
+
+def test_select_clips_without_candidate_set_returns_404_after_status_guard() -> None:
+    selector_spy = _SpyClipSelector()
+    client = _client(
+        RunStatus.SCENES_APPROVED,
+        clip_selector=selector_spy,
+    )
+
+    response = client.post("/runs/run-1/selected-clips/select")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["kind"] == "clip_candidates"
+    assert selector_spy.calls == []
+
+
+def test_get_selected_clip_list_returns_ordered_versions() -> None:
+    client = _client(RunStatus.SCRIPT_APPROVED)
+    _approve_scenes_after_scene_table(client)
+    client.post("/runs/run-1/stock-plans/generate")
+    client.post("/runs/run-1/clip-candidates/retrieve")
+    client.post("/runs/run-1/selected-clips/select")
+    client.post("/runs/run-1/selected-clips/select")
+
+    response = client.get("/runs/run-1/selected-clips")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert [asset["version"] for asset in response.json()] == [1, 2]
+
+
+def test_get_latest_selected_clips_returns_parsed_selected_clips() -> None:
+    stock_spy = _SpyStockPlanner()
+    clip_spy = _SpyClipRetrievalProvider()
+    selector_spy = _SpyClipSelector()
+    client = _client(
+        RunStatus.SCRIPT_APPROVED,
+        stock_planner=stock_spy,
+        clip_retrieval_provider=clip_spy,
+        clip_selector=selector_spy,
+    )
+    _approve_scenes_after_scene_table(client)
+    client.post("/runs/run-1/stock-plans/generate")
+    client.post("/runs/run-1/clip-candidates/retrieve")
+    client.post("/runs/run-1/selected-clips/select")
+
+    response = client.get("/runs/run-1/selected-clips/latest")
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["asset"]["kind"] == "selected_clips"
+    assert body["asset"]["version"] == 1
+    assert body["asset"]["metadata"]["source"] == "selected"
+    assert body["selected_clips"] == [
+        {
+            "scene_id": "stock-scene-1",
+            "query_text": "injected stock query",
+            "provider": "spy",
+            "provider_clip_id": "stock-scene-1-spy-1",
+            "title": "injected stock query spy candidate",
+            "preview_url": "memory://clips/stock-scene-1/preview.jpg",
+            "source_url": "memory://clips/stock-scene-1",
+            "duration_seconds": 7.5,
+            "width": 1920,
+            "height": 1080,
+            "selection_reason": "spy_selection",
+        },
+        {
+            "scene_id": "stock-scene-2",
+            "query_text": "second injected query",
+            "provider": "spy",
+            "provider_clip_id": "stock-scene-2-spy-1",
+            "title": "second injected query spy candidate",
+            "preview_url": "memory://clips/stock-scene-2/preview.jpg",
+            "source_url": "memory://clips/stock-scene-2",
+            "duration_seconds": 2.25,
+            "width": 1920,
+            "height": 1080,
+            "selection_reason": "spy_selection",
+        },
+    ]
+
+
+def test_latest_selected_clips_when_none_returns_404() -> None:
+    client = _client(RunStatus.SCRIPT_APPROVED)
+    _approve_scenes_after_scene_table(client)
+
+    response = client.get("/runs/run-1/selected-clips/latest")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["kind"] == "selected_clips"
+
+
 def test_default_app_wires_deterministic_generation_adapters() -> None:
     # All infra injected except the generators, which must default to the
     # deterministic local adapters (no external calls, no SDKs).
@@ -766,3 +943,4 @@ def test_default_app_wires_deterministic_generation_adapters() -> None:
     assert isinstance(app.state.scene_planner, StubSceneTablePlanner)
     assert isinstance(app.state.stock_planner, StubStockClipPlanner)
     assert isinstance(app.state.clip_retrieval_provider, StubClipRetrievalProvider)
+    assert isinstance(app.state.clip_selector, DeterministicClipSelector)

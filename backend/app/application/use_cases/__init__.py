@@ -24,6 +24,13 @@ from backend.app.application.use_cases.scene_assets import (
     ListSceneTables,
     SceneTable,
 )
+from backend.app.application.use_cases.selected_clip_assets import (
+    CreateSelectedClipSet,
+    GetLatestSelectedClipSet,
+    ListSelectedClipSets,
+    SelectClips,
+    SelectedClipSet,
+)
 from backend.app.application.use_cases.script_assets import (
     CreateScriptDraft,
     GenerateScriptDraft,
@@ -46,6 +53,7 @@ __all__ = [
     "CreateRun",
     "CreateSceneTable",
     "CreateScriptDraft",
+    "CreateSelectedClipSet",
     "CreateStockPlan",
     "GenerateSceneTable",
     "GenerateScriptDraft",
@@ -53,11 +61,13 @@ __all__ = [
     "GetLatestClipCandidateSet",
     "GetLatestSceneTable",
     "GetLatestScriptDraft",
+    "GetLatestSelectedClipSet",
     "GetLatestStockPlan",
     "GetRun",
     "HealthCheck",
     "HealthStatus",
     "ListSceneTables",
+    "ListSelectedClipSets",
     "ListScriptDrafts",
     "ListClipCandidateSets",
     "ListStockPlans",
@@ -65,6 +75,8 @@ __all__ = [
     "MarkScenesReady",
     "MarkScriptReady",
     "SceneTable",
+    "SelectClips",
+    "SelectedClipSet",
     "StockPlan",
     "RetrieveClipCandidates",
 ]

@@ -9,6 +9,7 @@ from backend.app.domain import (
     ClipCandidate,
     RenderSpec,
     SceneSpec,
+    SelectedClip,
     StockQuerySpec,
     VersionedAsset,
 )
@@ -50,6 +51,15 @@ class StockClipPlanner(Protocol):
 class ClipRetrievalProvider(Protocol):
     def retrieve(self, query: StockQuerySpec) -> Sequence[ClipCandidate]:
         """Return metadata-only clip candidates for one stock query."""
+        ...
+
+
+@runtime_checkable
+class ClipSelector(Protocol):
+    def select(
+        self, candidates: Sequence[ClipCandidate]
+    ) -> Sequence[SelectedClip]:
+        """Choose selected clips from retrieved candidate metadata."""
         ...
 
 

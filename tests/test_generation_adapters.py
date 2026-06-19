@@ -5,8 +5,14 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from backend.app.domain import ClipCandidate, SceneSpec, StockQuerySpec
+from backend.app.domain import (
+    ClipCandidate,
+    SceneSpec,
+    SelectedClip,
+    StockQuerySpec,
+)
 from backend.app.infrastructure.generation import (
+    DeterministicClipSelector,
     EchoScriptDraftGenerator,
     StubClipRetrievalProvider,
     StubSceneTablePlanner,
@@ -14,6 +20,7 @@ from backend.app.infrastructure.generation import (
 )
 from backend.app.ports import (
     ClipRetrievalProvider,
+    ClipSelector,
     SceneTablePlanner,
     ScriptDraftGenerator,
     StockClipPlanner,
@@ -42,6 +49,10 @@ def test_stub_stock_clip_planner_implements_port() -> None:
 
 def test_stub_clip_retrieval_provider_implements_port() -> None:
     assert isinstance(StubClipRetrievalProvider(), ClipRetrievalProvider)
+
+
+def test_deterministic_clip_selector_implements_port() -> None:
+    assert isinstance(DeterministicClipSelector(), ClipSelector)
 
 
 def test_echo_generator_is_deterministic() -> None:
@@ -217,6 +228,91 @@ def test_stub_clip_retrieval_provider_maps_stock_query_to_candidates() -> None:
     assert all(candidate.source_url.startswith("memory://") for candidate in candidates)
 
 
+def test_deterministic_clip_selector_is_repeatable() -> None:
+    selector = DeterministicClipSelector()
+    candidates = _candidate_sequence()
+
+    first = tuple(selector.select(candidates))
+    second = tuple(selector.select(candidates))
+
+    assert first == second
+
+
+def test_deterministic_clip_selector_selects_first_candidate_per_group() -> None:
+    selector = DeterministicClipSelector()
+
+    selected = tuple(selector.select(_candidate_sequence()))
+
+    assert selected == (
+        SelectedClip(
+            scene_id="scene-1",
+            query_text="clean desk product shot",
+            provider="stub",
+            provider_clip_id="scene-1-1",
+            title="Clean Desk Product Shot candidate 1",
+            preview_url="memory://clips/scene-1/1/preview.jpg",
+            source_url="memory://clips/scene-1/1",
+            duration_seconds=4.0,
+            width=1920,
+            height=1080,
+            selection_reason="first_candidate_for_scene_query",
+        ),
+        SelectedClip(
+            scene_id="scene-2",
+            query_text="person using mobile app",
+            provider="stub",
+            provider_clip_id="scene-2-1",
+            title="Person Using Mobile App candidate 1",
+            preview_url="memory://clips/scene-2/1/preview.jpg",
+            source_url="memory://clips/scene-2/1",
+            duration_seconds=5.25,
+            width=1920,
+            height=1080,
+            selection_reason="first_candidate_for_scene_query",
+        ),
+    )
+    assert [clip.provider_clip_id for clip in selected] == [
+        "scene-1-1",
+        "scene-2-1",
+    ]
+
+
+def test_deterministic_clip_selector_preserves_first_seen_group_order() -> None:
+    selector = DeterministicClipSelector()
+    candidates = (
+        _candidate("scene-2", "person using mobile app", "scene-2-1"),
+        _candidate("scene-1", "clean desk product shot", "scene-1-1"),
+        _candidate("scene-2", "person using mobile app", "scene-2-2"),
+    )
+
+    selected = tuple(selector.select(candidates))
+
+    assert [(clip.scene_id, clip.query_text) for clip in selected] == [
+        ("scene-2", "person using mobile app"),
+        ("scene-1", "clean desk product shot"),
+    ]
+
+
+def test_deterministic_clip_selector_copies_urls_unchanged() -> None:
+    selector = DeterministicClipSelector()
+    candidate = _candidate(
+        "scene-1",
+        "clean desk product shot",
+        "scene-1-1",
+        preview_url="memory://custom/preview.jpg",
+        source_url="memory://custom/source",
+    )
+
+    selected = tuple(selector.select((candidate,)))
+
+    assert selected[0].preview_url == "memory://custom/preview.jpg"
+    assert selected[0].source_url == "memory://custom/source"
+
+
+def test_deterministic_clip_selector_empty_input_returns_empty_output() -> None:
+    assert tuple(DeterministicClipSelector().select(())) == ()
+
+
 def test_generation_package_imports_no_forbidden_modules() -> None:
     forbidden_prefixes = (
         "backend.app.api",
@@ -250,3 +346,36 @@ def test_generation_package_imports_no_forbidden_modules() -> None:
                 assert not (
                     name == prefix or name.startswith(f"{prefix}.")
                 ), f"{path.name} imports forbidden module {name}"
+
+
+def _candidate_sequence() -> tuple[ClipCandidate, ...]:
+    return (
+        _candidate("scene-1", "clean desk product shot", "scene-1-1"),
+        _candidate("scene-1", "clean desk product shot", "scene-1-2"),
+        _candidate("scene-2", "person using mobile app", "scene-2-1"),
+        _candidate("scene-2", "person using mobile app", "scene-2-2"),
+    )
+
+
+def _candidate(
+    scene_id: str,
+    query_text: str,
+    provider_clip_id: str,
+    *,
+    preview_url: str | None = None,
+    source_url: str | None = None,
+) -> ClipCandidate:
+    index = provider_clip_id.rsplit("-", maxsplit=1)[-1]
+    return ClipCandidate(
+        scene_id=scene_id,
+        query_text=query_text,
+        provider="stub",
+        provider_clip_id=provider_clip_id,
+        title=f"{query_text.title()} candidate {index}",
+        preview_url=preview_url
+        or f"memory://clips/{scene_id}/{index}/preview.jpg",
+        source_url=source_url or f"memory://clips/{scene_id}/{index}",
+        duration_seconds=4.0 if scene_id == "scene-1" else 5.25,
+        width=1920,
+        height=1080,
+    )

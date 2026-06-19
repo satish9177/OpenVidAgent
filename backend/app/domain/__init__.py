@@ -11,6 +11,7 @@ from backend.app.domain.models import (
     RUN_STATUS_TRANSITIONS,
     RunStatus,
     SceneSpec,
+    SelectedClip,
     StockQuerySpec,
     VersionedAsset,
 )
@@ -26,6 +27,7 @@ __all__ = [
     "RUN_STATUS_TRANSITIONS",
     "RunStatus",
     "SceneSpec",
+    "SelectedClip",
     "StockQuerySpec",
     "VersionedAsset",
 ]

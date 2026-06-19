@@ -14,6 +14,7 @@ from backend.app.application.use_cases import (
     CreateClipCandidateSet,
     CreateRun,
     CreateSceneTable,
+    CreateSelectedClipSet,
     CreateScriptDraft,
     CreateStockPlan,
     GenerateSceneTable,
@@ -21,10 +22,12 @@ from backend.app.application.use_cases import (
     GenerateStockPlan,
     GetLatestClipCandidateSet,
     GetLatestSceneTable,
+    GetLatestSelectedClipSet,
     GetLatestScriptDraft,
     GetLatestStockPlan,
     GetRun,
     ListSceneTables,
+    ListSelectedClipSets,
     ListScriptDrafts,
     ListClipCandidateSets,
     ListStockPlans,
@@ -32,9 +35,11 @@ from backend.app.application.use_cases import (
     MarkScenesReady,
     MarkScriptReady,
     RetrieveClipCandidates,
+    SelectClips,
 )
 from backend.app.ports import (
     ClipRetrievalProvider,
+    ClipSelector,
     Renderer,
     RunRepository,
     SceneTablePlanner,
@@ -110,6 +115,7 @@ def test_provider_interfaces_live_in_ports() -> None:
         SceneTablePlanner,
         StockClipPlanner,
         ClipRetrievalProvider,
+        ClipSelector,
         StockProvider,
         TTSProvider,
         SubtitleBuilder,
@@ -194,6 +200,17 @@ def test_stock_asset_use_cases_depend_only_on_expected_ports_and_factories() -> 
             "asset_repository": VersionedAssetRepository,
             "storage": StoragePort,
         },
+        CreateSelectedClipSet: {
+            "run_repository": RunRepository,
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+            "asset_id_factory": Callable[[], str] | None,
+        },
+        ListSelectedClipSets: {"asset_repository": VersionedAssetRepository},
+        GetLatestSelectedClipSet: {
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+        },
     }
 
     for use_case, constructor_hints in expected.items():
@@ -249,6 +266,26 @@ def test_stub_clip_retrieval_provider_import_confined_to_composition_root() -> N
     assert not offenders
 
 
+def test_deterministic_clip_selector_import_confined_to_composition_root() -> None:
+    allowed = APP_ROOT / "main.py"
+    offenders: list[Path] = []
+
+    for path in _python_files(APP_ROOT):
+        relative_parts = path.relative_to(APP_ROOT).parts
+        if "infrastructure" in relative_parts:
+            continue
+        if path == allowed:
+            continue
+        if _imports_symbol(
+            path,
+            module_prefix="backend.app.infrastructure.generation",
+            symbol="DeterministicClipSelector",
+        ):
+            offenders.append(path)
+
+    assert not offenders
+
+
 def test_generation_use_cases_depend_on_ports_and_create_use_cases() -> None:
     expected: dict[type, dict[str, type]] = {
         GenerateScriptDraft: {
@@ -272,6 +309,12 @@ def test_generation_use_cases_depend_on_ports_and_create_use_cases() -> None:
             "clip_retrieval_provider": ClipRetrievalProvider,
             "get_latest_stock_plan": GetLatestStockPlan,
             "create_clip_candidate_set": CreateClipCandidateSet,
+        },
+        SelectClips: {
+            "run_repository": RunRepository,
+            "clip_selector": ClipSelector,
+            "get_latest_clip_candidate_set": GetLatestClipCandidateSet,
+            "create_selected_clip_set": CreateSelectedClipSet,
         },
     }
 
