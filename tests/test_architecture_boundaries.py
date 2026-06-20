@@ -19,10 +19,12 @@ from backend.app.application.use_cases import (
     CreateScriptDraft,
     CreateStockPlan,
     CreateVideoAssemblyPlan,
+    CreateVoiceover,
     GenerateSceneTable,
     GenerateScriptDraft,
     GenerateStockPlan,
     GenerateVideoAssemblyPlan,
+    GenerateVoiceover,
     DownloadClips,
     GetLatestClipCandidateSet,
     GetLatestDownloadedClipSet,
@@ -31,6 +33,7 @@ from backend.app.application.use_cases import (
     GetLatestScriptDraft,
     GetLatestStockPlan,
     GetLatestVideoAssemblyPlan,
+    GetLatestVoiceover,
     GetRun,
     ListSceneTables,
     ListSelectedClipSets,
@@ -39,6 +42,7 @@ from backend.app.application.use_cases import (
     ListDownloadedClipSets,
     ListStockPlans,
     ListVideoAssemblyPlans,
+    ListVoiceovers,
     MarkFailed,
     MarkScenesReady,
     MarkScriptReady,
@@ -60,6 +64,7 @@ from backend.app.ports import (
     TTSProvider,
     VersionedAssetRepository,
     VideoAssemblyPlanner,
+    VoiceoverGenerator,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -128,6 +133,7 @@ def test_provider_interfaces_live_in_ports() -> None:
         ClipSelector,
         ClipDownloader,
         VideoAssemblyPlanner,
+        VoiceoverGenerator,
         StockProvider,
         TTSProvider,
         SubtitleBuilder,
@@ -249,6 +255,17 @@ def test_stock_asset_use_cases_depend_only_on_expected_ports_and_factories() -> 
             "asset_repository": VersionedAssetRepository,
             "storage": StoragePort,
         },
+        CreateVoiceover: {
+            "run_repository": RunRepository,
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+            "asset_id_factory": Callable[[], str] | None,
+        },
+        ListVoiceovers: {"asset_repository": VersionedAssetRepository},
+        GetLatestVoiceover: {
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+        },
     }
 
     for use_case, constructor_hints in expected.items():
@@ -364,6 +381,26 @@ def test_stub_clip_downloader_import_confined_to_composition_root() -> None:
     assert not offenders
 
 
+def test_stub_voiceover_generator_import_confined_to_composition_root() -> None:
+    allowed = APP_ROOT / "main.py"
+    offenders: list[Path] = []
+
+    for path in _python_files(APP_ROOT):
+        relative_parts = path.relative_to(APP_ROOT).parts
+        if "infrastructure" in relative_parts:
+            continue
+        if path == allowed:
+            continue
+        if _imports_symbol(
+            path,
+            module_prefix="backend.app.infrastructure.generation",
+            symbol="StubVoiceoverGenerator",
+        ):
+            offenders.append(path)
+
+    assert not offenders
+
+
 def test_generation_use_cases_depend_on_ports_and_create_use_cases() -> None:
     expected: dict[type, dict[str, type]] = {
         GenerateScriptDraft: {
@@ -407,6 +444,12 @@ def test_generation_use_cases_depend_on_ports_and_create_use_cases() -> None:
             "get_latest_video_assembly_plan": GetLatestVideoAssemblyPlan,
             "create_downloaded_clip_set": CreateDownloadedClipSet,
         },
+        GenerateVoiceover: {
+            "run_repository": RunRepository,
+            "voiceover_generator": VoiceoverGenerator,
+            "get_latest_video_assembly_plan": GetLatestVideoAssemblyPlan,
+            "create_voiceover": CreateVoiceover,
+        },
     }
 
     for use_case, constructor_hints in expected.items():
@@ -435,6 +478,13 @@ def test_generation_adapters_import_no_api_application_or_external_modules() -> 
         "subprocess",
         "ffmpeg",
         "moviepy",
+        "elevenlabs",
+        "cartesia",
+        "sarvam",
+        "wave",
+        "audioop",
+        "pydub",
+        "soundfile",
     }
 
     generation_files = _python_files(APP_ROOT / "infrastructure" / "generation")

@@ -16,6 +16,7 @@ from backend.app.domain.models import (
     StockQuerySpec,
     VersionedAsset,
     VideoAssemblySegment,
+    VoiceoverSegment,
 )
 
 __all__ = [
@@ -34,4 +35,5 @@ __all__ = [
     "StockQuerySpec",
     "VersionedAsset",
     "VideoAssemblySegment",
+    "VoiceoverSegment",
 ]

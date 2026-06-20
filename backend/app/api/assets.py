@@ -21,12 +21,14 @@ from backend.app.application.use_cases import (
     CreateScriptDraft,
     CreateStockPlan,
     CreateVideoAssemblyPlan,
+    CreateVoiceover,
     DownloadClips,
     DownloadedClipSet,
     GenerateSceneTable,
     GenerateScriptDraft,
     GenerateStockPlan,
     GenerateVideoAssemblyPlan,
+    GenerateVoiceover,
     GetLatestClipCandidateSet,
     GetLatestDownloadedClipSet,
     GetLatestSceneTable,
@@ -34,6 +36,7 @@ from backend.app.application.use_cases import (
     GetLatestScriptDraft,
     GetLatestStockPlan,
     GetLatestVideoAssemblyPlan,
+    GetLatestVoiceover,
     ListClipCandidateSets,
     ListDownloadedClipSets,
     ListSceneTables,
@@ -41,12 +44,14 @@ from backend.app.application.use_cases import (
     ListScriptDrafts,
     ListStockPlans,
     ListVideoAssemblyPlans,
+    ListVoiceovers,
     RetrieveClipCandidates,
     SceneTable,
     SelectClips,
     SelectedClipSet,
     StockPlan,
     VideoAssemblyPlan,
+    Voiceover,
 )
 from backend.app.domain import (
     ClipCandidate,
@@ -56,6 +61,7 @@ from backend.app.domain import (
     StockQuerySpec,
     VersionedAsset,
     VideoAssemblySegment,
+    VoiceoverSegment,
 )
 from backend.app.ports import (
     ClipRetrievalProvider,
@@ -68,6 +74,7 @@ from backend.app.ports import (
     StoragePort,
     VersionedAssetRepository,
     VideoAssemblyPlanner,
+    VoiceoverGenerator,
 )
 
 router = APIRouter(prefix="/runs", tags=["assets"])
@@ -123,6 +130,11 @@ def get_video_assembly_planner(request: Request) -> VideoAssemblyPlanner:
 def get_clip_downloader(request: Request) -> ClipDownloader:
     """Resolve the clip downloader wired at composition time."""
     return request.app.state.clip_downloader
+
+
+def get_voiceover_generator(request: Request) -> VoiceoverGenerator:
+    """Resolve the voiceover generator wired at composition time."""
+    return request.app.state.voiceover_generator
 
 
 class CreateScriptDraftRequest(BaseModel):
@@ -431,6 +443,53 @@ class DownloadedClipSetResponse(BaseModel):
             downloaded_clips=[
                 DownloadedClipModel.from_domain(clip)
                 for clip in downloaded_clip_set.downloaded_clips
+            ],
+        )
+
+
+class VoiceoverSegmentModel(BaseModel):
+    scene_id: str
+    order_index: int
+    narration_text: str
+    language: str
+    voice_id: str
+    provider: str
+    audio_uri: str
+    content_type: str
+    duration_seconds: float
+    status: str
+    generation_reason: str
+
+    @classmethod
+    def from_domain(
+        cls, segment: VoiceoverSegment
+    ) -> "VoiceoverSegmentModel":
+        return cls(
+            scene_id=segment.scene_id,
+            order_index=segment.order_index,
+            narration_text=segment.narration_text,
+            language=segment.language,
+            voice_id=segment.voice_id,
+            provider=segment.provider,
+            audio_uri=segment.audio_uri,
+            content_type=segment.content_type,
+            duration_seconds=segment.duration_seconds,
+            status=segment.status,
+            generation_reason=segment.generation_reason,
+        )
+
+
+class VoiceoverResponse(BaseModel):
+    asset: AssetResponse
+    segments: list[VoiceoverSegmentModel]
+
+    @classmethod
+    def from_voiceover(cls, voiceover: Voiceover) -> "VoiceoverResponse":
+        return cls(
+            asset=AssetResponse.from_asset(voiceover.asset),
+            segments=[
+                VoiceoverSegmentModel.from_domain(segment)
+                for segment in voiceover.segments
             ],
         )
 
@@ -856,3 +915,60 @@ def get_latest_downloaded_clips(
     return DownloadedClipSetResponse.from_downloaded_clip_set(
         downloaded_clip_set
     )
+
+
+@router.post(
+    "/{run_id}/voiceovers/generate",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AssetResponse,
+)
+def generate_voiceover(
+    run_id: str,
+    run_repository: RunRepository = Depends(get_run_repository),
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+    voiceover_generator: VoiceoverGenerator = Depends(
+        get_voiceover_generator
+    ),
+) -> AssetResponse:
+    create_voiceover = CreateVoiceover(
+        run_repository, asset_repository, storage
+    )
+    get_latest_video_assembly_plan = GetLatestVideoAssemblyPlan(
+        asset_repository, storage
+    )
+    asset = GenerateVoiceover(
+        run_repository,
+        voiceover_generator,
+        get_latest_video_assembly_plan,
+        create_voiceover,
+    ).execute(run_id)
+    return AssetResponse.from_asset(asset)
+
+
+@router.get("/{run_id}/voiceovers", response_model=list[AssetResponse])
+def list_voiceovers(
+    run_id: str,
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+) -> list[AssetResponse]:
+    assets = ListVoiceovers(asset_repository).execute(run_id)
+    return [AssetResponse.from_asset(asset) for asset in assets]
+
+
+@router.get(
+    "/{run_id}/voiceovers/latest",
+    response_model=VoiceoverResponse,
+)
+def get_latest_voiceover(
+    run_id: str,
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+) -> VoiceoverResponse:
+    voiceover = GetLatestVoiceover(asset_repository, storage).execute(run_id)
+    return VoiceoverResponse.from_voiceover(voiceover)

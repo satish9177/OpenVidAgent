@@ -18,6 +18,7 @@ class AssetKind(str, Enum):
     VIDEO_ASSEMBLY_PLAN = "video_assembly_plan"
     DOWNLOADED_CLIPS = "downloaded_clips"
     STOCK_CLIP = "stock_clip"
+    VOICEOVER = "voiceover"
     VOICE = "voice"
     SUBTITLE = "subtitle"
     RENDER = "render"
@@ -152,6 +153,21 @@ class DownloadedClip:
     order_index: int
     download_status: str
     download_reason: str
+
+
+@dataclass(frozen=True)
+class VoiceoverSegment:
+    scene_id: str
+    order_index: int
+    narration_text: str
+    language: str
+    voice_id: str
+    provider: str
+    audio_uri: str
+    content_type: str
+    duration_seconds: float
+    status: str
+    generation_reason: str
 
 
 @dataclass(frozen=True)

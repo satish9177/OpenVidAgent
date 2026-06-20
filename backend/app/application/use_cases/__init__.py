@@ -58,6 +58,13 @@ from backend.app.application.use_cases.video_assembly_plan_assets import (
     ListVideoAssemblyPlans,
     VideoAssemblyPlan,
 )
+from backend.app.application.use_cases.voiceover_assets import (
+    CreateVoiceover,
+    GenerateVoiceover,
+    GetLatestVoiceover,
+    ListVoiceovers,
+    Voiceover,
+)
 
 __all__ = [
     "ApproveScenes",
@@ -71,12 +78,14 @@ __all__ = [
     "CreateSelectedClipSet",
     "CreateStockPlan",
     "CreateVideoAssemblyPlan",
+    "CreateVoiceover",
     "DownloadClips",
     "DownloadedClipSet",
     "GenerateSceneTable",
     "GenerateScriptDraft",
     "GenerateStockPlan",
     "GenerateVideoAssemblyPlan",
+    "GenerateVoiceover",
     "GetLatestClipCandidateSet",
     "GetLatestDownloadedClipSet",
     "GetLatestSceneTable",
@@ -84,6 +93,7 @@ __all__ = [
     "GetLatestSelectedClipSet",
     "GetLatestStockPlan",
     "GetLatestVideoAssemblyPlan",
+    "GetLatestVoiceover",
     "GetRun",
     "HealthCheck",
     "HealthStatus",
@@ -94,6 +104,7 @@ __all__ = [
     "ListDownloadedClipSets",
     "ListStockPlans",
     "ListVideoAssemblyPlans",
+    "ListVoiceovers",
     "MarkFailed",
     "MarkScenesReady",
     "MarkScriptReady",
@@ -103,4 +114,5 @@ __all__ = [
     "StockPlan",
     "RetrieveClipCandidates",
     "VideoAssemblyPlan",
+    "Voiceover",
 ]

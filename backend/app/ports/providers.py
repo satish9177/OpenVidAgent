@@ -14,6 +14,7 @@ from backend.app.domain import (
     StockQuerySpec,
     VersionedAsset,
     VideoAssemblySegment,
+    VoiceoverSegment,
 )
 
 
@@ -82,6 +83,18 @@ class ClipDownloader(Protocol):
         self, run_id: str, segment: VideoAssemblySegment
     ) -> DownloadedClip:
         """Create a local clip reference from assembly segment metadata."""
+        ...
+
+
+@runtime_checkable
+class VoiceoverGenerator(Protocol):
+    def generate(
+        self,
+        run_id: str,
+        segment: VideoAssemblySegment,
+        language: str,
+    ) -> VoiceoverSegment:
+        """Create a metadata-only voiceover segment reference."""
         ...
 
 
