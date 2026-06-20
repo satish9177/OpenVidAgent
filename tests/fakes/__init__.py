@@ -1,6 +1,7 @@
 """Fake provider implementations for tests."""
 
 from tests.fakes.providers import (
+    FakeClipDownloader,
     FakeClipRetrievalProvider,
     FakeClipSelector,
     FakeRenderer,
@@ -19,6 +20,7 @@ from tests.fakes.repositories import (
 from tests.fakes.storage import InMemoryStorage
 
 __all__ = [
+    "FakeClipDownloader",
     "FakeClipRetrievalProvider",
     "FakeClipSelector",
     "FakeRenderer",

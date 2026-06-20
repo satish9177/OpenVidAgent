@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from backend.app.domain import (
     AssetKind,
     ClipCandidate,
+    DownloadedClip,
     RenderSpec,
     SceneSpec,
     SelectedClip,
@@ -16,6 +17,7 @@ from backend.app.domain import (
 )
 from backend.app.ports import (
     ClipRetrievalProvider,
+    ClipDownloader,
     ClipSelector,
     Renderer,
     SceneTablePlanner,
@@ -155,6 +157,43 @@ class FakeVideoAssemblyPlanner(VideoAssemblyPlanner):
     ) -> Sequence[VideoAssemblySegment]:
         self.calls.append((tuple(scenes), tuple(selected_clips)))
         return self._segments
+
+
+class FakeClipDownloader(ClipDownloader):
+    def __init__(
+        self,
+        downloaded_clips: Sequence[DownloadedClip] | None = None,
+    ) -> None:
+        self._downloaded_clips = (
+            tuple(downloaded_clips) if downloaded_clips is not None else None
+        )
+        self.calls: list[tuple[str, VideoAssemblySegment]] = []
+
+    def download(
+        self, run_id: str, segment: VideoAssemblySegment
+    ) -> DownloadedClip:
+        self.calls.append((run_id, segment))
+        if self._downloaded_clips is not None:
+            return self._downloaded_clips[len(self.calls) - 1]
+        return DownloadedClip(
+            scene_id=segment.scene_id,
+            query_text=segment.query_text,
+            provider=segment.provider,
+            provider_clip_id=segment.provider_clip_id,
+            title=segment.title,
+            source_url=segment.source_url,
+            local_uri=(
+                f"memory://downloads/{run_id}/{segment.order_index:04d}/"
+                f"{segment.provider}-{segment.provider_clip_id}.mp4"
+            ),
+            content_type="video/mp4",
+            duration_seconds=segment.source_duration_seconds,
+            width=segment.width,
+            height=segment.height,
+            order_index=segment.order_index,
+            download_status="available",
+            download_reason="fake_download",
+        )
 
 
 class FakeTTSProvider(TTSProvider):

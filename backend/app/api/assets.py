@@ -15,22 +15,27 @@ from pydantic import BaseModel
 from backend.app.application.use_cases import (
     ClipCandidateSet,
     CreateClipCandidateSet,
+    CreateDownloadedClipSet,
     CreateSceneTable,
     CreateSelectedClipSet,
     CreateScriptDraft,
     CreateStockPlan,
     CreateVideoAssemblyPlan,
+    DownloadClips,
+    DownloadedClipSet,
     GenerateSceneTable,
     GenerateScriptDraft,
     GenerateStockPlan,
     GenerateVideoAssemblyPlan,
     GetLatestClipCandidateSet,
+    GetLatestDownloadedClipSet,
     GetLatestSceneTable,
     GetLatestSelectedClipSet,
     GetLatestScriptDraft,
     GetLatestStockPlan,
     GetLatestVideoAssemblyPlan,
     ListClipCandidateSets,
+    ListDownloadedClipSets,
     ListSceneTables,
     ListSelectedClipSets,
     ListScriptDrafts,
@@ -45,6 +50,7 @@ from backend.app.application.use_cases import (
 )
 from backend.app.domain import (
     ClipCandidate,
+    DownloadedClip,
     SceneSpec,
     SelectedClip,
     StockQuerySpec,
@@ -53,6 +59,7 @@ from backend.app.domain import (
 )
 from backend.app.ports import (
     ClipRetrievalProvider,
+    ClipDownloader,
     ClipSelector,
     RunRepository,
     SceneTablePlanner,
@@ -111,6 +118,11 @@ def get_clip_selector(request: Request) -> ClipSelector:
 def get_video_assembly_planner(request: Request) -> VideoAssemblyPlanner:
     """Resolve the video assembly planner wired at composition time."""
     return request.app.state.video_assembly_planner
+
+
+def get_clip_downloader(request: Request) -> ClipDownloader:
+    """Resolve the clip downloader wired at composition time."""
+    return request.app.state.clip_downloader
 
 
 class CreateScriptDraftRequest(BaseModel):
@@ -366,6 +378,59 @@ class VideoAssemblyPlanResponse(BaseModel):
             segments=[
                 VideoAssemblySegmentModel.from_domain(segment)
                 for segment in plan.segments
+            ],
+        )
+
+
+class DownloadedClipModel(BaseModel):
+    scene_id: str
+    query_text: str
+    provider: str
+    provider_clip_id: str
+    title: str
+    source_url: str
+    local_uri: str
+    content_type: str
+    duration_seconds: float
+    width: int
+    height: int
+    order_index: int
+    download_status: str
+    download_reason: str
+
+    @classmethod
+    def from_domain(cls, clip: DownloadedClip) -> "DownloadedClipModel":
+        return cls(
+            scene_id=clip.scene_id,
+            query_text=clip.query_text,
+            provider=clip.provider,
+            provider_clip_id=clip.provider_clip_id,
+            title=clip.title,
+            source_url=clip.source_url,
+            local_uri=clip.local_uri,
+            content_type=clip.content_type,
+            duration_seconds=clip.duration_seconds,
+            width=clip.width,
+            height=clip.height,
+            order_index=clip.order_index,
+            download_status=clip.download_status,
+            download_reason=clip.download_reason,
+        )
+
+
+class DownloadedClipSetResponse(BaseModel):
+    asset: AssetResponse
+    downloaded_clips: list[DownloadedClipModel]
+
+    @classmethod
+    def from_downloaded_clip_set(
+        cls, downloaded_clip_set: DownloadedClipSet
+    ) -> "DownloadedClipSetResponse":
+        return cls(
+            asset=AssetResponse.from_asset(downloaded_clip_set.asset),
+            downloaded_clips=[
+                DownloadedClipModel.from_domain(clip)
+                for clip in downloaded_clip_set.downloaded_clips
             ],
         )
 
@@ -729,3 +794,65 @@ def get_latest_video_assembly_plan(
 ) -> VideoAssemblyPlanResponse:
     plan = GetLatestVideoAssemblyPlan(asset_repository, storage).execute(run_id)
     return VideoAssemblyPlanResponse.from_video_assembly_plan(plan)
+
+
+@router.post(
+    "/{run_id}/downloaded-clips/download",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AssetResponse,
+)
+def download_clips(
+    run_id: str,
+    run_repository: RunRepository = Depends(get_run_repository),
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+    clip_downloader: ClipDownloader = Depends(get_clip_downloader),
+) -> AssetResponse:
+    create_downloaded_clip_set = CreateDownloadedClipSet(
+        run_repository, asset_repository, storage
+    )
+    get_latest_video_assembly_plan = GetLatestVideoAssemblyPlan(
+        asset_repository, storage
+    )
+    asset = DownloadClips(
+        run_repository,
+        clip_downloader,
+        get_latest_video_assembly_plan,
+        create_downloaded_clip_set,
+    ).execute(run_id)
+    return AssetResponse.from_asset(asset)
+
+
+@router.get(
+    "/{run_id}/downloaded-clips",
+    response_model=list[AssetResponse],
+)
+def list_downloaded_clips(
+    run_id: str,
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+) -> list[AssetResponse]:
+    assets = ListDownloadedClipSets(asset_repository).execute(run_id)
+    return [AssetResponse.from_asset(asset) for asset in assets]
+
+
+@router.get(
+    "/{run_id}/downloaded-clips/latest",
+    response_model=DownloadedClipSetResponse,
+)
+def get_latest_downloaded_clips(
+    run_id: str,
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+) -> DownloadedClipSetResponse:
+    downloaded_clip_set = GetLatestDownloadedClipSet(
+        asset_repository, storage
+    ).execute(run_id)
+    return DownloadedClipSetResponse.from_downloaded_clip_set(
+        downloaded_clip_set
+    )

@@ -262,6 +262,52 @@ def test_prompt_to_scenes_happy_path_advances_through_every_status() -> None:
         assert segment["transition"] == "cut"
         assert segment["continuity_note"] == "ordered_by_scene_table"
 
+    # 15. Download clips into a metadata-only manifest. The default downloader
+    # fabricates stable memory references and writes no media files.
+    downloaded = client.post(f"/runs/{run_id}/downloaded-clips/download")
+    assert downloaded.status_code == status.HTTP_201_CREATED
+    downloaded_body = downloaded.json()
+    assert downloaded_body["kind"] == "downloaded_clips"
+    assert downloaded_body["version"] == 1
+    assert downloaded_body["metadata"] == {
+        "video_assembly_plan_asset_id": assembly_body["asset_id"],
+        "video_assembly_plan_version": "1",
+        "source": "downloaded",
+    }
+
+    # 16. Every assembly segment has one ordered downloaded record with copied
+    # provider/source metadata and an unmistakably non-file memory URI.
+    latest_downloaded = client.get(
+        f"/runs/{run_id}/downloaded-clips/latest"
+    )
+    assert latest_downloaded.status_code == status.HTTP_200_OK
+    latest_downloaded_body = latest_downloaded.json()
+    assert latest_downloaded_body["asset"] == downloaded_body
+    downloaded_clips = latest_downloaded_body["downloaded_clips"]
+    assert len(downloaded_clips) == len(segments)
+    assert [clip["order_index"] for clip in downloaded_clips] == [
+        segment["order_index"] for segment in segments
+    ]
+
+    segments_by_order = {
+        segment["order_index"]: segment for segment in segments
+    }
+    for clip in downloaded_clips:
+        segment = segments_by_order[clip["order_index"]]
+        assert clip["scene_id"] == segment["scene_id"]
+        assert clip["query_text"] == segment["query_text"]
+        assert clip["provider"] == segment["provider"]
+        assert clip["provider_clip_id"] == segment["provider_clip_id"]
+        assert clip["title"] == segment["title"]
+        assert clip["source_url"] == segment["source_url"]
+        assert clip["duration_seconds"] == segment["source_duration_seconds"]
+        assert clip["width"] == segment["width"]
+        assert clip["height"] == segment["height"]
+        assert clip["local_uri"].startswith("memory://downloads/")
+        assert clip["content_type"] == "video/mp4"
+        assert clip["download_status"] == "available"
+        assert clip["download_reason"] == "deterministic_placeholder"
+
     final_run = client.get(f"/runs/{run_id}").json()
     assert final_run["status"] == "scenes_approved"
     assert final_run["status"] != "rendered"

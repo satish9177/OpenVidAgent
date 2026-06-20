@@ -18,12 +18,16 @@ from backend.app.infrastructure.generation.stub_stock_clip_planner import (
 from backend.app.infrastructure.generation.stub_clip_retrieval_provider import (
     StubClipRetrievalProvider,
 )
+from backend.app.infrastructure.generation.stub_clip_downloader import (
+    StubClipDownloader,
+)
 
 __all__ = [
     "DeterministicClipSelector",
     "DeterministicVideoAssemblyPlanner",
     "EchoScriptDraftGenerator",
     "StubClipRetrievalProvider",
+    "StubClipDownloader",
     "StubSceneTablePlanner",
     "StubStockClipPlanner",
 ]
