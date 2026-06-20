@@ -51,6 +51,13 @@ from backend.app.application.use_cases.stock_assets import (
     ListStockPlans,
     StockPlan,
 )
+from backend.app.application.use_cases.subtitle_assets import (
+    CreateSubtitles,
+    GenerateSubtitles,
+    GetLatestSubtitles,
+    ListSubtitles,
+    Subtitles,
+)
 from backend.app.application.use_cases.video_assembly_plan_assets import (
     CreateVideoAssemblyPlan,
     GenerateVideoAssemblyPlan,
@@ -77,6 +84,7 @@ __all__ = [
     "CreateScriptDraft",
     "CreateSelectedClipSet",
     "CreateStockPlan",
+    "CreateSubtitles",
     "CreateVideoAssemblyPlan",
     "CreateVoiceover",
     "DownloadClips",
@@ -84,6 +92,7 @@ __all__ = [
     "GenerateSceneTable",
     "GenerateScriptDraft",
     "GenerateStockPlan",
+    "GenerateSubtitles",
     "GenerateVideoAssemblyPlan",
     "GenerateVoiceover",
     "GetLatestClipCandidateSet",
@@ -92,6 +101,7 @@ __all__ = [
     "GetLatestScriptDraft",
     "GetLatestSelectedClipSet",
     "GetLatestStockPlan",
+    "GetLatestSubtitles",
     "GetLatestVideoAssemblyPlan",
     "GetLatestVoiceover",
     "GetRun",
@@ -103,6 +113,7 @@ __all__ = [
     "ListClipCandidateSets",
     "ListDownloadedClipSets",
     "ListStockPlans",
+    "ListSubtitles",
     "ListVideoAssemblyPlans",
     "ListVoiceovers",
     "MarkFailed",
@@ -112,6 +123,7 @@ __all__ = [
     "SelectClips",
     "SelectedClipSet",
     "StockPlan",
+    "Subtitles",
     "RetrieveClipCandidates",
     "VideoAssemblyPlan",
     "Voiceover",

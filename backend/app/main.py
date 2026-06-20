@@ -31,6 +31,7 @@ from backend.app.infrastructure.generation import (
     StubClipDownloader,
     StubSceneTablePlanner,
     StubStockClipPlanner,
+    StubSubtitleComposer,
     StubVoiceoverGenerator,
 )
 from backend.app.infrastructure.storage import LocalFilesystemStorage
@@ -42,6 +43,7 @@ from backend.app.ports import (
     SceneTablePlanner,
     ScriptDraftGenerator,
     StockClipPlanner,
+    SubtitleComposer,
     StoragePort,
     VersionedAssetRepository,
     VideoAssemblyPlanner,
@@ -63,6 +65,7 @@ def create_app(
     video_assembly_planner: VideoAssemblyPlanner | None = None,
     clip_downloader: ClipDownloader | None = None,
     voiceover_generator: VoiceoverGenerator | None = None,
+    subtitle_composer: SubtitleComposer | None = None,
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
 
@@ -100,6 +103,8 @@ def create_app(
         clip_downloader = StubClipDownloader()
     if voiceover_generator is None:
         voiceover_generator = StubVoiceoverGenerator()
+    if subtitle_composer is None:
+        subtitle_composer = StubSubtitleComposer()
 
     lifespan = None
     if needs_database or needs_storage_root:
@@ -130,6 +135,7 @@ def create_app(
     app.state.video_assembly_planner = video_assembly_planner
     app.state.clip_downloader = clip_downloader
     app.state.voiceover_generator = voiceover_generator
+    app.state.subtitle_composer = subtitle_composer
     app.include_router(health_router)
     app.include_router(runs_router)
     app.include_router(assets_router)

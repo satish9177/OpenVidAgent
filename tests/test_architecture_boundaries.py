@@ -18,11 +18,13 @@ from backend.app.application.use_cases import (
     CreateSelectedClipSet,
     CreateScriptDraft,
     CreateStockPlan,
+    CreateSubtitles,
     CreateVideoAssemblyPlan,
     CreateVoiceover,
     GenerateSceneTable,
     GenerateScriptDraft,
     GenerateStockPlan,
+    GenerateSubtitles,
     GenerateVideoAssemblyPlan,
     GenerateVoiceover,
     DownloadClips,
@@ -32,6 +34,7 @@ from backend.app.application.use_cases import (
     GetLatestSelectedClipSet,
     GetLatestScriptDraft,
     GetLatestStockPlan,
+    GetLatestSubtitles,
     GetLatestVideoAssemblyPlan,
     GetLatestVoiceover,
     GetRun,
@@ -41,6 +44,7 @@ from backend.app.application.use_cases import (
     ListClipCandidateSets,
     ListDownloadedClipSets,
     ListStockPlans,
+    ListSubtitles,
     ListVideoAssemblyPlans,
     ListVoiceovers,
     MarkFailed,
@@ -59,6 +63,7 @@ from backend.app.ports import (
     ScriptDraftGenerator,
     StockClipPlanner,
     StockProvider,
+    SubtitleComposer,
     StoragePort,
     SubtitleBuilder,
     TTSProvider,
@@ -135,6 +140,7 @@ def test_provider_interfaces_live_in_ports() -> None:
         VideoAssemblyPlanner,
         VoiceoverGenerator,
         StockProvider,
+        SubtitleComposer,
         TTSProvider,
         SubtitleBuilder,
         Renderer,
@@ -263,6 +269,17 @@ def test_stock_asset_use_cases_depend_only_on_expected_ports_and_factories() -> 
         },
         ListVoiceovers: {"asset_repository": VersionedAssetRepository},
         GetLatestVoiceover: {
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+        },
+        CreateSubtitles: {
+            "run_repository": RunRepository,
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+            "asset_id_factory": Callable[[], str] | None,
+        },
+        ListSubtitles: {"asset_repository": VersionedAssetRepository},
+        GetLatestSubtitles: {
             "asset_repository": VersionedAssetRepository,
             "storage": StoragePort,
         },
@@ -401,6 +418,26 @@ def test_stub_voiceover_generator_import_confined_to_composition_root() -> None:
     assert not offenders
 
 
+def test_stub_subtitle_composer_import_confined_to_composition_root() -> None:
+    allowed = APP_ROOT / "main.py"
+    offenders: list[Path] = []
+
+    for path in _python_files(APP_ROOT):
+        relative_parts = path.relative_to(APP_ROOT).parts
+        if "infrastructure" in relative_parts:
+            continue
+        if path == allowed:
+            continue
+        if _imports_symbol(
+            path,
+            module_prefix="backend.app.infrastructure.generation",
+            symbol="StubSubtitleComposer",
+        ):
+            offenders.append(path)
+
+    assert not offenders
+
+
 def test_generation_use_cases_depend_on_ports_and_create_use_cases() -> None:
     expected: dict[type, dict[str, type]] = {
         GenerateScriptDraft: {
@@ -450,6 +487,12 @@ def test_generation_use_cases_depend_on_ports_and_create_use_cases() -> None:
             "get_latest_video_assembly_plan": GetLatestVideoAssemblyPlan,
             "create_voiceover": CreateVoiceover,
         },
+        GenerateSubtitles: {
+            "run_repository": RunRepository,
+            "subtitle_composer": SubtitleComposer,
+            "get_latest_voiceover": GetLatestVoiceover,
+            "create_subtitles": CreateSubtitles,
+        },
     }
 
     for use_case, constructor_hints in expected.items():
@@ -485,6 +528,8 @@ def test_generation_adapters_import_no_api_application_or_external_modules() -> 
         "audioop",
         "pydub",
         "soundfile",
+        "os",
+        "pathlib",
     }
 
     generation_files = _python_files(APP_ROOT / "infrastructure" / "generation")

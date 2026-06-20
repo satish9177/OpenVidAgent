@@ -15,6 +15,9 @@ from backend.app.infrastructure.generation.stub_scene_table_planner import (
 from backend.app.infrastructure.generation.stub_stock_clip_planner import (
     StubStockClipPlanner,
 )
+from backend.app.infrastructure.generation.stub_subtitle_composer import (
+    StubSubtitleComposer,
+)
 from backend.app.infrastructure.generation.stub_voiceover_generator import (
     StubVoiceoverGenerator,
 )
@@ -33,5 +36,6 @@ __all__ = [
     "StubClipDownloader",
     "StubSceneTablePlanner",
     "StubStockClipPlanner",
+    "StubSubtitleComposer",
     "StubVoiceoverGenerator",
 ]

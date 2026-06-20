@@ -12,6 +12,7 @@ from backend.app.domain import (
     SceneSpec,
     SelectedClip,
     StockQuerySpec,
+    SubtitleSegment,
     VersionedAsset,
     VideoAssemblySegment,
     VoiceoverSegment,
@@ -95,6 +96,18 @@ class VoiceoverGenerator(Protocol):
         language: str,
     ) -> VoiceoverSegment:
         """Create a metadata-only voiceover segment reference."""
+        ...
+
+
+@runtime_checkable
+class SubtitleComposer(Protocol):
+    def compose(
+        self,
+        voiceover_segment: VoiceoverSegment,
+        start_seconds: float,
+        language: str,
+    ) -> SubtitleSegment:
+        """Create one metadata-only timed subtitle segment."""
         ...
 
 

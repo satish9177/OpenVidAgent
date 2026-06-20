@@ -204,7 +204,7 @@ replaceable composer port. It deliberately stops short of writing or formatting
 any caption file so the abstraction, persistence, timing model, and API shape can
 be locked in and tested before any SRT/VTT serializer, alignment provider, cue
 styling, or FFmpeg/burn-in concern is introduced. Because the model carries
-`language` -- copied from the voiceover, which already carries `run.language` --
+`language` -- resolved from the voiceover, which already carries `run.language` --
 the manifest shape already supports Telugu/Hindi and other Indian languages
 without a reshape when real subtitle files arrive.
 
@@ -220,11 +220,11 @@ without a reshape when real subtitle files arrive.
 | 6 | Real `.srt` / `.vtt` files or metadata only? | **Metadata only** (D46). No caption files, no placeholder subtitle bytes; the only bytes written are the JSON manifest. |
 | 7 | Subtitle builder port? | Yes, a **new** metadata-only `SubtitleComposer` port (D47), distinct from the reserved `SubtitleBuilder`. |
 | 8 | Reuse the reserved `SubtitleBuilder`, or define a new metadata-only port? | Define a **new** `SubtitleComposer` (D47). `SubtitleBuilder.build(script, voice) -> VersionedAsset` is reserved to return caption-file bytes from the full script and the voice audio; reusing it would force this metadata-only phase to produce a `VersionedAsset` it has no bytes for, or to redefine its contract -- both premature. |
-| 9 | Deterministic fake behavior? | Map each `VoiceoverSegment` to one `SubtitleSegment`: copy `scene_id`/`order_index`/`language`, set `text = voiceover_segment.narration_text`, `duration_seconds = voiceover_segment.duration_seconds`, `start_seconds` = the supplied cumulative offset, `end_seconds = start + duration`, `format = "manifest"`, `status = "available"`, `generation_reason = "deterministic_placeholder"` (D47). |
+| 9 | Deterministic fake behavior? | Map each `VoiceoverSegment` to one `SubtitleSegment`: copy `scene_id`/`order_index`, set `text = voiceover_segment.narration_text`, `language` = the supplied `language` argument (the use-case-resolved manifest language), `duration_seconds = voiceover_segment.duration_seconds`, `start_seconds` = the supplied cumulative offset, `end_seconds = start + duration`, `format = "manifest"`, `status = "available"`, `generation_reason = "deterministic_placeholder"` (D47). |
 | 10 | `memory://subtitles/...` references only, or no file reference at all? | **No file reference at all** (D46). The model has no `subtitle_uri`; the structured text+timing records *are* the caption content. A per-segment `memory://subtitles/...` reference would mismodel a whole-run `.srt` / `.vtt` file and collide with the namespace the reserved `SubtitleBuilder` already uses. |
-| 11 | What metadata to copy for durability? | From each voiceover segment: `scene_id`, `order_index`, `narration_text` (as `text`), `language`, and `duration_seconds`. `start_seconds`/`end_seconds` are derived from the cumulative durations (D46/D47). Copy-not-reference, per D22/D28. Audio fields (`voice_id`, `provider`, `audio_uri`, `content_type`) are intentionally **not** copied -- they are delivery concerns, not caption concerns. |
+| 11 | What metadata to copy for durability? | From each voiceover segment: `scene_id`, `order_index`, `narration_text` (as `text`), and `duration_seconds`. `language` is the manifest language the use-case resolves once and passes in (D47/D48/D49), not a per-segment copy. `start_seconds`/`end_seconds` are derived from the cumulative durations (D46/D47). Copy-not-reference, per D22/D28. Audio fields (`voice_id`, `provider`, `audio_uri`, `content_type`) are intentionally **not** copied -- they are delivery concerns, not caption concerns. |
 | 12 | Use voiceover segment `duration_seconds` for timing? | Yes (D47). `duration_seconds` is copied per segment; `start_seconds`/`end_seconds` are accumulated from it (first segment at `0.0`, each `end = start + duration`, next `start = previous end`). |
-| 13 | Language fields for Telugu/Hindi/Indian-language captions now? | Yes (D46/D49). `language` is copied from `voiceover_segment.language`, which already carries `run.language` (`"en"`, `"te"`, `"hi"`, `"ta"`, ...). No new request field; no provider call. |
+| 13 | Language fields for Telugu/Hindi/Indian-language captions now? | Yes (D46/D49). `language` is the manifest language the use-case resolves from the voiceover (asset metadata -> first segment language -> `"en"`) and passes into every `compose(...)`; in the normal path this equals `voiceover_segment.language`, which already carries `run.language` (`"en"`, `"te"`, `"hi"`, `"ta"`, ...). No new request field; no provider call. |
 | 14 | Use-cases? | `CreateSubtitles`, `GenerateSubtitles`, `ListSubtitles`, `GetLatestSubtitles` (D48). |
 | 15 | API routes? | `POST .../subtitles/generate`, `GET .../subtitles`, `GET .../subtitles/latest` (D48). No manual create route. |
 | 16 | Run status gate? | `RunStatus.SCENES_APPROVED`, checked before the voiceover read (D45). |
@@ -313,7 +313,7 @@ class SubtitleSegment:
     scene_id: str            # links the record back to its scene
     order_index: int         # copied from the voiceover segment; preserves order
     text: str                # the caption text (copied narration)
-    language: str            # e.g. "en", "te", "hi"; copied from the voiceover
+    language: str            # e.g. "en", "te", "hi"; resolved manifest language
     start_seconds: float     # cumulative timeline start (see D47)
     end_seconds: float       # start + duration_seconds
     duration_seconds: float  # copied from the voiceover segment
@@ -324,17 +324,22 @@ class SubtitleSegment:
 
 Field semantics:
 
-- `scene_id`, `order_index`, `language`, and `duration_seconds` are copied from
-  the matching `VoiceoverSegment`; `text` is copied from
-  `voiceover_segment.narration_text`. Copying keeps each manifest version durable
-  even when the voiceover is regenerated later, matching the copy-not-reference
-  rule of D22/D28. Audio fields (`voice_id`, `provider`, `audio_uri`,
-  `content_type`) are deliberately **not** copied: they describe how the narration
-  is delivered as sound, not what the caption says.
-- `language` is the caption language, copied from the voiceover segment, which
-  already carries `run.language` (D49). It is a free-form string so any language --
-  including Telugu (`"te"`), Hindi (`"hi"`), Tamil (`"ta"`) -- is representable
-  today without a real provider.
+- `scene_id`, `order_index`, and `duration_seconds` are copied from the matching
+  `VoiceoverSegment`; `text` is copied from `voiceover_segment.narration_text`.
+  Copying keeps each manifest version durable even when the voiceover is regenerated
+  later, matching the copy-not-reference rule of D22/D28. Audio fields (`voice_id`,
+  `provider`, `audio_uri`, `content_type`) are deliberately **not** copied: they
+  describe how the narration is delivered as sound, not what the caption says.
+- `language` is the resolved subtitle manifest language that the use-case passes
+  into `compose(...)` (see D47/D48/D49): a single value resolved once via
+  `voiceover.asset.metadata.get("language", voiceover.segments[0].language if voiceover.segments else "en")`.
+  It usually equals the source `VoiceoverSegment.language` -- in the normal
+  `GenerateVoiceover` path every segment already carries `run.language` -- but the
+  use-case fallback policy is authoritative, so the field is uniform across the
+  manifest even when an upstream voiceover asset omits a `language` key or its
+  segments disagree. It is a free-form string so any language -- including Telugu
+  (`"te"`), Hindi (`"hi"`), Tamil (`"ta"`) -- is representable today without a real
+  provider.
 - `start_seconds` and `end_seconds` are the caption's on-screen window, derived by
   the use-case accumulating per-segment durations (D47); `duration_seconds` is the
   copied per-segment duration and always equals `end_seconds - start_seconds`.
@@ -419,9 +424,12 @@ the reserved `SubtitleBuilder`:
 @runtime_checkable
 class SubtitleComposer(Protocol):
     def compose(
-        self, voiceover_segment: VoiceoverSegment, start_seconds: float
+        self,
+        voiceover_segment: VoiceoverSegment,
+        start_seconds: float,
+        language: str,
     ) -> SubtitleSegment:
-        """Create one metadata-only subtitle segment from a voiceover segment."""
+        """Create one metadata-only timed subtitle segment."""
         ...
 ```
 
@@ -437,13 +445,24 @@ class SubtitleComposer(Protocol):
   retrieval/selection/download/voiceover. `start_seconds` is a plain float, the
   same shape as the `run_id` / `language` identifier strings the other ports
   already accept, not a layer violation.
-- **No `run_id` and no `language` parameter.** Unlike the downloader and voiceover
-  generator, the composer builds no run-scoped file reference (D46 removes
-  `subtitle_uri`), so it needs no `run_id`; and the caption language is copied
-  straight from `voiceover_segment.language` (already threaded from `run.language`
-  upstream), so it needs no separate `language` argument. Both omissions are
-  deliberate divergences justified by D46, not oversights; a future caption-file
-  port (`SubtitleBuilder`) is where run scoping returns.
+- **A resolved `language` parameter, but no `run_id`.** Unlike the downloader and
+  voiceover generator, the composer builds no run-scoped file reference (D46 removes
+  `subtitle_uri`), so it needs no `run_id`. It does take an explicit `language: str`.
+  `GenerateSubtitles` resolves a single manifest language once with the defensive
+  fallback
+  `voiceover.asset.metadata.get("language", voiceover.segments[0].language if voiceover.segments else "en")`
+  and threads that one resolved value into every `compose(...)` call; the composer
+  uses the passed `language` directly when constructing `SubtitleSegment.language`.
+  Keeping language *resolution* in the use-case (where the voiceover read and its
+  metadata already live) and language *use* in the composer keeps the composer pure
+  and keeps the whole manifest on one authoritative language. In the normal
+  `GenerateVoiceover` path this resolved value equals the voiceover/run language that
+  every `VoiceoverSegment.language` already carries, so a per-segment copy and this
+  passed value coincide. For a manually/internally created voiceover (whose asset
+  metadata may omit `language`, or whose segments could disagree) the use-case
+  fallback is authoritative and yields deterministic manifest-level language
+  behavior. Omitting `run_id` is a deliberate divergence justified by D46; a future
+  caption-file port (`SubtitleBuilder`) is where run scoping returns.
 - **Distinct from `SubtitleBuilder`.** `SubtitleBuilder.build(script, voice) ->
   VersionedAsset` returns a caption-file-bytes asset built from the full script and
   the voice audio, and stays reserved/unused. `SubtitleComposer` owns the *plan*
@@ -460,8 +479,9 @@ Add `StubSubtitleComposer` under `backend/app/infrastructure/generation`, named 
 symmetry with `StubVoiceoverGenerator` / `StubClipDownloader` (it stands in for an
 absent real subtitle integration). Its algorithm for each segment:
 
-1. Copy `scene_id`, `order_index`, and `language` from the voiceover segment, and
-   set `text = voiceover_segment.narration_text`.
+1. Copy `scene_id` and `order_index` from the voiceover segment, set
+   `text = voiceover_segment.narration_text`, and set `language` from the supplied
+   `language` argument (the manifest language the use-case resolved).
 2. Set `duration_seconds = voiceover_segment.duration_seconds`.
 3. Set `start_seconds = start_seconds` (the supplied cumulative offset) and
    `end_seconds = start_seconds + voiceover_segment.duration_seconds`.
@@ -478,16 +498,20 @@ defensively by `order_index` before the fold rather than relying on stored order
 ```text
 cursor = 0.0
 for voiceover_segment in sorted(voiceover.segments, key=lambda s: s.order_index):
-    subtitle = subtitle_composer.compose(voiceover_segment, cursor)
-    cursor = subtitle.end_seconds
+    subtitle = subtitle_composer.compose(voiceover_segment, cursor, language)
+    cursor += voiceover_segment.duration_seconds
     collect(subtitle)
 ```
 
 So the first caption starts at `0.0`, each caption ends at `start + duration`, and
 the next caption starts at the previous caption's end -- a gapless, contiguous,
 deterministic timeline driven entirely by the voiceover's per-segment durations,
-in ascending `order_index`. The defensive sort is cheap and guarantees the timeline
-is never mis-ordered by an upstream voiceover that stored segments out of order.
+in ascending `order_index`. The implementation advances the cursor with
+`start_seconds += voiceover_segment.duration_seconds`; because the stub sets
+`end_seconds = start_seconds + voiceover_segment.duration_seconds`, this is
+equivalent to advancing with `subtitle.end_seconds` for the stub. The defensive sort
+is cheap and guarantees the timeline is never mis-ordered by an upstream voiceover
+that stored segments out of order.
 
 The adapter is pure and repeatable: same inputs (the same segment and the same
 `start_seconds`) produce equal outputs. It performs no randomness, ranking,
@@ -557,7 +581,7 @@ constructor dependencies mirror `GenerateVoiceover` / `DownloadClips` exactly (r
 repository, generation port, the one latest-read it needs, and the sibling create
 use-case).
 
-### D49. Storage and path convention; language copied from voiceover; no-overwrite via versioning
+### D49. Storage and path convention; manifest language resolved by the use-case; no-overwrite via versioning
 
 - Store each manifest as JSON bytes through `StoragePort`, indexed under
   `(run_id, AssetKind.SUBTITLE_MANIFEST)`. Use private application helpers
@@ -567,19 +591,25 @@ use-case).
   as `float`, `order_index` as `int`, and the remaining fields as `str`.
 - Store `source` and provenance in `VersionedAsset.metadata`: `voiceover_asset_id`,
   `voiceover_version` (string, because `metadata` is `Mapping[str, str]`), and
-  `language`. The per-segment `language` lives on every parsed segment and is
-  queryable from `Subtitles.segments`; the manifest-level `language` is resolved
-  with the defensive fallback `voiceover.asset.metadata.get("language",
-  voiceover.segments[0].language if voiceover.segments else "en")` so it is present
-  even when the upstream voiceover asset omits a `language` key (a manually/
-  internally created voiceover) or has zero segments.
+  `language`. The same resolved `language` is recorded once in manifest metadata and
+  passed into every `compose(...)` call, so it also lives on every parsed segment and
+  is queryable from `Subtitles.segments`. It is resolved with the defensive fallback
+  `voiceover.asset.metadata.get("language", voiceover.segments[0].language if voiceover.segments else "en")`
+  so it is present even when the upstream voiceover asset omits a `language` key (a
+  manually/internally created voiceover) or has zero segments.
 - **Language threading.** The caption language is *not* re-read from `run.language`
-  in this phase. It is copied from each `VoiceoverSegment.language` (which
-  `GenerateVoiceover` already stamped from `run.language`) onto each
-  `SubtitleSegment.language`, and recorded once at manifest level via the defensive
-  resolution above (voiceover asset metadata -> first segment language -> `"en"`).
-  No new request body or run field is introduced; this is strictly cleaner than the
-  voiceover phase, which had to thread `run.language` itself.
+  in this phase. `GenerateSubtitles` resolves one manifest language from the latest
+  voiceover via the defensive fallback above (voiceover asset metadata -> first
+  segment language -> `"en"`), records it in manifest metadata, and threads that one
+  resolved value into every `compose(...)` call, which the composer writes onto each
+  `SubtitleSegment.language`. Language *resolution* stays in the use-case and
+  language *use* stays in the composer, so the whole manifest carries one
+  authoritative language. In the normal `GenerateVoiceover` path this equals the
+  `run.language` that `GenerateVoiceover` already stamped onto every
+  `VoiceoverSegment.language`, so it matches a per-segment copy; for manual/internal
+  voiceovers the fallback gives deterministic manifest-level behavior. No new request
+  body or run field is introduced; this is strictly cleaner than the voiceover phase,
+  which had to thread `run.language` itself.
 - **Avoiding overwrites.** Each `GenerateSubtitles` call creates a new, immutable
   `SUBTITLE_MANIFEST` version; prior versions are never mutated -- the same
   append-only guarantee as every other asset phase. Because this foundation writes
@@ -630,9 +660,9 @@ use-case).
 - Add and export `StubSubtitleComposer` from the generation adapter package
   (`backend/app/infrastructure/generation/__init__.py`).
 - Add a recording `FakeSubtitleComposer` in `tests/fakes/providers.py` for use-case
-  and API tests. It records `(voiceover_segment, start_seconds)` calls and returns
-  configured or default `SubtitleSegment` records; those tests do not depend on the
-  concrete adapter.
+  and API tests. It records `(voiceover_segment, start_seconds, language)` calls and
+  returns configured or default `SubtitleSegment` records; those tests do not depend
+  on the concrete adapter.
 - Wire only the port into application/API code. The concrete adapter is imported
   only by `main.py` and its own adapter/confinement tests.
 - Do not place the composer in `provider_registry.py`; direct composition-root
@@ -642,7 +672,8 @@ use-case).
 ## Fake Composer Decision
 
 - `StubSubtitleComposer` implements the D47 algorithm: one `SubtitleSegment` per
-  `VoiceoverSegment`, `scene_id`/`order_index`/`language` copied,
+  `VoiceoverSegment`, `scene_id`/`order_index` copied, `language` set from the
+  supplied `language` argument (the use-case-resolved manifest language),
   `text = voiceover_segment.narration_text`,
   `duration_seconds = voiceover_segment.duration_seconds`, `start_seconds` taken
   from the supplied offset, `end_seconds = start + duration`, `format = "manifest"`
@@ -738,14 +769,15 @@ asset-byte endpoint, caption-file endpoint, or render endpoint.
 - A fake satisfies runtime `isinstance(fake, SubtitleComposer)`; the port resolves
   to `backend.app.ports.providers`.
 - `get_type_hints(SubtitleComposer.compose)` shows
-  `voiceover_segment: VoiceoverSegment`, `start_seconds: float`, and
-  `return: SubtitleSegment`.
+  `voiceover_segment: VoiceoverSegment`, `start_seconds: float`, `language: str`,
+  and `return: SubtitleSegment`.
 - `SubtitleComposer` is a different object from `SubtitleBuilder`; the no-reuse
   decision is visible (separate protocol, separate port).
 - `StubSubtitleComposer` is deterministic and repeatable: same segment + same
-  `start_seconds` produce equal outputs.
-- One `SubtitleSegment` per call; `scene_id`, `order_index`, and `language` are
-  copied; `text == voiceover_segment.narration_text`;
+  `start_seconds` + same `language` produce equal outputs.
+- One `SubtitleSegment` per call; `scene_id` and `order_index` are copied;
+  `language == language` (the passed argument is used verbatim, even when it differs
+  from `voiceover_segment.language`); `text == voiceover_segment.narration_text`;
   `duration_seconds == voiceover_segment.duration_seconds`.
 - `start_seconds` equals the supplied offset; `end_seconds == start_seconds +
   duration_seconds`.
@@ -765,17 +797,19 @@ asset-byte endpoint, caption-file endpoint, or render endpoint.
   read and before composer/persistence work (409, not 404), persisting nothing.
 - `RunNotFoundError` when the run is missing (composer not called).
 - `GenerateSubtitles` calls the composer once per segment, in order, with the latest
-  voiceover's segments, threading a cumulative cursor; the produced segments are
-  contiguous (`start_0 == 0.0`; each `start_n == end_{n-1}`; each `end ==
-  start + duration`) and aggregate every result.
+  voiceover's segments, threading a cumulative cursor and the single resolved
+  `language` into every `compose(voiceover_segment, start_seconds, language)` call;
+  the produced segments are contiguous (`start_0 == 0.0`; each `start_n == end_{n-1}`;
+  each `end == start + duration`) and aggregate every result.
 - A voiceover whose segments are stored out of `order_index` order yields subtitle
   segments ordered ascending by `order_index`, with timing accumulated in that order
   (the defensive sort in `GenerateSubtitles`), not in stored order.
-- Manifest `language` resolution: (a) voiceover asset metadata has `language` ->
-  manifest metadata uses it; (b) voiceover asset metadata lacks `language` but has
-  segments -> manifest metadata uses the first segment's `language`; (c) voiceover
-  asset metadata lacks `language` and has zero segments -> manifest metadata defaults
-  to `"en"`.
+- Manifest `language` resolution, asserted both in manifest metadata and in the
+  `language` argument passed to every `compose(...)` call: (a) voiceover asset
+  metadata has `language` -> use the metadata language; (b) voiceover asset metadata
+  lacks `language` but has segments -> use the first segment's `language`; (c)
+  voiceover asset metadata lacks `language` and has zero segments -> default to
+  `"en"`.
 - An empty latest voiceover (zero segments) yields an empty `SUBTITLE_MANIFEST`
   manifest, never calls the composer, records a manifest-level `language` via the
   defensive fallback (the voiceover's `language` metadata when present, else `"en"`),
@@ -869,7 +903,7 @@ each slice and the full suite after the final slice.
 - **Change:** Add/export the D47 runtime-checkable protocol, separate from
   `SubtitleBuilder`.
 - **Tests:** Runtime conformance against a fake, module location, exact type hints
-  (`voiceover_segment: VoiceoverSegment`, `start_seconds: float`,
+  (`voiceover_segment: VoiceoverSegment`, `start_seconds: float`, `language: str`,
   `return: SubtitleSegment`), and distinctness from `SubtitleBuilder`.
 - **Acceptance:** Port tests and architecture tests pass.
 
@@ -882,8 +916,8 @@ each slice and the full suite after the final slice.
 - **Change:** Implement the D47 mapping and the recording fake. No safe-segment
   helper is needed (no URI).
 - **Tests:** One record per call, field copies, text/duration copy,
-  start/end arithmetic, format/status/reason constants, language copy,
-  repeatability, port conformance.
+  start/end arithmetic, format/status/reason constants, the passed `language` is
+  used on `SubtitleSegment.language`, repeatability, port conformance.
 - **Boundary:** No application/API/external/subtitle-SDK imports.
 - **Acceptance:** Focused adapter and generation-boundary tests pass.
 
@@ -999,8 +1033,9 @@ secrets, SQLite databases, caches, or virtual-environment files are included.
 ## Open Questions
 
 - **Composer call shape: per-segment with offset vs whole-list.** This foundation
-  uses a per-segment `compose(voiceover_segment, start_seconds)` with the use-case
-  owning the cumulative fold (D47), keeping symmetry with `VoiceoverGenerator` /
+  uses a per-segment `compose(voiceover_segment, start_seconds, language)` with the
+  use-case owning the cumulative fold and language resolution (D47), keeping symmetry
+  with `VoiceoverGenerator` /
   `ClipDownloader`. The rejected alternative -- `compose(voiceover_segments) ->
   Sequence[SubtitleSegment]` letting the composer own timing -- is cleaner for the
   timing concern but breaks the per-item port parallel and concentrates more policy
