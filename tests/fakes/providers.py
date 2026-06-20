@@ -14,6 +14,7 @@ from backend.app.domain import (
     StockQuerySpec,
     VersionedAsset,
     VideoAssemblySegment,
+    VoiceoverSegment,
 )
 from backend.app.ports import (
     ClipRetrievalProvider,
@@ -27,6 +28,7 @@ from backend.app.ports import (
     SubtitleBuilder,
     TTSProvider,
     VideoAssemblyPlanner,
+    VoiceoverGenerator,
 )
 
 
@@ -193,6 +195,46 @@ class FakeClipDownloader(ClipDownloader):
             order_index=segment.order_index,
             download_status="available",
             download_reason="fake_download",
+        )
+
+
+class FakeVoiceoverGenerator(VoiceoverGenerator):
+    def __init__(
+        self,
+        voiceover_segments: Sequence[VoiceoverSegment] | None = None,
+    ) -> None:
+        self._voiceover_segments = (
+            tuple(voiceover_segments)
+            if voiceover_segments is not None
+            else None
+        )
+        self.calls: list[tuple[str, VideoAssemblySegment, str]] = []
+
+    def generate(
+        self,
+        run_id: str,
+        segment: VideoAssemblySegment,
+        language: str,
+    ) -> VoiceoverSegment:
+        self.calls.append((run_id, segment, language))
+        if self._voiceover_segments is not None:
+            return self._voiceover_segments[len(self.calls) - 1]
+        resolved_language = language or "en"
+        return VoiceoverSegment(
+            scene_id=segment.scene_id,
+            order_index=segment.order_index,
+            narration_text=segment.narration,
+            language=resolved_language,
+            voice_id="fake-narrator",
+            provider="fake",
+            audio_uri=(
+                f"memory://voiceovers/{run_id}/{segment.order_index:04d}/"
+                f"{segment.scene_id}.mp3"
+            ),
+            content_type="audio/mpeg",
+            duration_seconds=segment.target_duration_seconds,
+            status="available",
+            generation_reason="fake_generation",
         )
 
 

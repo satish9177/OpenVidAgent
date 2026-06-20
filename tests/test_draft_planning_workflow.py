@@ -308,6 +308,51 @@ def test_prompt_to_scenes_happy_path_advances_through_every_status() -> None:
         assert clip["download_status"] == "available"
         assert clip["download_reason"] == "deterministic_placeholder"
 
+    # 17. Generate a metadata-only voiceover manifest from the same assembly
+    # plan. The default generator creates references only, never audio bytes.
+    voiceover = client.post(f"/runs/{run_id}/voiceovers/generate")
+    assert voiceover.status_code == status.HTTP_201_CREATED
+    voiceover_body = voiceover.json()
+    assert voiceover_body["kind"] == "voiceover"
+    assert voiceover_body["version"] == 1
+    assert voiceover_body["metadata"] == {
+        "video_assembly_plan_asset_id": assembly_body["asset_id"],
+        "video_assembly_plan_version": "1",
+        "language": "en",
+        "source": "generated",
+    }
+
+    # 18. Every assembly segment has one ordered narration record with target
+    # duration and deterministic memory URI metadata.
+    latest_voiceover = client.get(f"/runs/{run_id}/voiceovers/latest")
+    assert latest_voiceover.status_code == status.HTTP_200_OK
+    latest_voiceover_body = latest_voiceover.json()
+    assert latest_voiceover_body["asset"] == voiceover_body
+    voiceover_segments = latest_voiceover_body["segments"]
+    assert len(voiceover_segments) == len(segments)
+    assert [segment["order_index"] for segment in voiceover_segments] == [
+        segment["order_index"] for segment in segments
+    ]
+
+    for voiceover_segment in voiceover_segments:
+        segment = segments_by_order[voiceover_segment["order_index"]]
+        assert voiceover_segment["scene_id"] == segment["scene_id"]
+        assert voiceover_segment["narration_text"] == segment["narration"]
+        assert voiceover_segment["duration_seconds"] == (
+            segment["target_duration_seconds"]
+        )
+        assert voiceover_segment["language"] == "en"
+        assert voiceover_segment["voice_id"] == "stub-narrator"
+        assert voiceover_segment["provider"] == "stub"
+        assert voiceover_segment["audio_uri"].startswith(
+            "memory://voiceovers/"
+        )
+        assert voiceover_segment["content_type"] == "audio/mpeg"
+        assert voiceover_segment["status"] == "available"
+        assert voiceover_segment["generation_reason"] == (
+            "deterministic_placeholder"
+        )
+
     final_run = client.get(f"/runs/{run_id}").json()
     assert final_run["status"] == "scenes_approved"
     assert final_run["status"] != "rendered"

@@ -12,6 +12,7 @@ from backend.app.ports.providers import (
     SubtitleBuilder,
     TTSProvider,
     VideoAssemblyPlanner,
+    VoiceoverGenerator,
 )
 from backend.app.ports.repositories import (
     JobQueuePort,
@@ -36,4 +37,5 @@ __all__ = [
     "TTSProvider",
     "VersionedAssetRepository",
     "VideoAssemblyPlanner",
+    "VoiceoverGenerator",
 ]
