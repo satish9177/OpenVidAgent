@@ -12,6 +12,7 @@ from backend.app.domain import (
     SceneSpec,
     SelectedClip,
     StockQuerySpec,
+    SubtitleSegment,
     VersionedAsset,
     VideoAssemblySegment,
     VoiceoverSegment,
@@ -26,6 +27,7 @@ from backend.app.ports import (
     StockClipPlanner,
     StockProvider,
     SubtitleBuilder,
+    SubtitleComposer,
     TTSProvider,
     VideoAssemblyPlanner,
     VoiceoverGenerator,
@@ -235,6 +237,40 @@ class FakeVoiceoverGenerator(VoiceoverGenerator):
             duration_seconds=segment.target_duration_seconds,
             status="available",
             generation_reason="fake_generation",
+        )
+
+
+class FakeSubtitleComposer(SubtitleComposer):
+    def __init__(
+        self,
+        subtitle_segments: Sequence[SubtitleSegment] | None = None,
+    ) -> None:
+        self._subtitle_segments = (
+            tuple(subtitle_segments) if subtitle_segments is not None else None
+        )
+        self.calls: list[tuple[VoiceoverSegment, float, str]] = []
+
+    def compose(
+        self,
+        voiceover_segment: VoiceoverSegment,
+        start_seconds: float,
+        language: str,
+    ) -> SubtitleSegment:
+        self.calls.append((voiceover_segment, start_seconds, language))
+        if self._subtitle_segments is not None:
+            return self._subtitle_segments[len(self.calls) - 1]
+        duration_seconds = voiceover_segment.duration_seconds
+        return SubtitleSegment(
+            scene_id=voiceover_segment.scene_id,
+            order_index=voiceover_segment.order_index,
+            text=voiceover_segment.narration_text,
+            language=language,
+            start_seconds=start_seconds,
+            end_seconds=start_seconds + duration_seconds,
+            duration_seconds=duration_seconds,
+            format="manifest",
+            status="available",
+            generation_reason="fake_composition",
         )
 
 

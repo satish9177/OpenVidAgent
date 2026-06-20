@@ -353,6 +353,56 @@ def test_prompt_to_scenes_happy_path_advances_through_every_status() -> None:
             "deterministic_placeholder"
         )
 
+    # 19. Generate cumulative subtitle metadata from the latest voiceover.
+    # Nothing is written as SRT/VTT and no caption burn-in is attempted.
+    subtitles = client.post(f"/runs/{run_id}/subtitles/generate")
+    assert subtitles.status_code == status.HTTP_201_CREATED
+    subtitles_body = subtitles.json()
+    assert subtitles_body["kind"] == "subtitle_manifest"
+    assert subtitles_body["version"] == 1
+    assert subtitles_body["metadata"] == {
+        "voiceover_asset_id": voiceover_body["asset_id"],
+        "voiceover_version": "1",
+        "language": "en",
+        "source": "generated",
+    }
+
+    # 20. Subtitle timing follows voiceover order and cumulative durations.
+    latest_subtitles = client.get(f"/runs/{run_id}/subtitles/latest")
+    assert latest_subtitles.status_code == status.HTTP_200_OK
+    latest_subtitles_body = latest_subtitles.json()
+    assert latest_subtitles_body["asset"] == subtitles_body
+    subtitle_segments = latest_subtitles_body["segments"]
+    assert len(subtitle_segments) == len(voiceover_segments)
+    assert [segment["order_index"] for segment in subtitle_segments] == [
+        segment["order_index"] for segment in voiceover_segments
+    ]
+
+    voiceover_by_order = {
+        segment["order_index"]: segment for segment in voiceover_segments
+    }
+    expected_start = 0.0
+    for subtitle_segment in subtitle_segments:
+        voiceover_segment = voiceover_by_order[
+            subtitle_segment["order_index"]
+        ]
+        assert subtitle_segment["scene_id"] == voiceover_segment["scene_id"]
+        assert subtitle_segment["text"] == voiceover_segment["narration_text"]
+        assert subtitle_segment["language"] == "en"
+        assert subtitle_segment["start_seconds"] == expected_start
+        assert subtitle_segment["duration_seconds"] == (
+            voiceover_segment["duration_seconds"]
+        )
+        expected_end = expected_start + voiceover_segment["duration_seconds"]
+        assert subtitle_segment["end_seconds"] == expected_end
+        assert subtitle_segment["format"] == "manifest"
+        assert subtitle_segment["status"] == "available"
+        assert subtitle_segment["generation_reason"] == (
+            "deterministic_placeholder"
+        )
+        assert "subtitle_uri" not in subtitle_segment
+        expected_start = expected_end
+
     final_run = client.get(f"/runs/{run_id}").json()
     assert final_run["status"] == "scenes_approved"
     assert final_run["status"] != "rendered"

@@ -20,6 +20,7 @@ class AssetKind(str, Enum):
     STOCK_CLIP = "stock_clip"
     VOICEOVER = "voiceover"
     VOICE = "voice"
+    SUBTITLE_MANIFEST = "subtitle_manifest"
     SUBTITLE = "subtitle"
     RENDER = "render"
 
@@ -166,6 +167,20 @@ class VoiceoverSegment:
     audio_uri: str
     content_type: str
     duration_seconds: float
+    status: str
+    generation_reason: str
+
+
+@dataclass(frozen=True)
+class SubtitleSegment:
+    scene_id: str
+    order_index: int
+    text: str
+    language: str
+    start_seconds: float
+    end_seconds: float
+    duration_seconds: float
+    format: str
     status: str
     generation_reason: str
 

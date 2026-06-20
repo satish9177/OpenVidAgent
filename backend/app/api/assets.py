@@ -20,6 +20,7 @@ from backend.app.application.use_cases import (
     CreateSelectedClipSet,
     CreateScriptDraft,
     CreateStockPlan,
+    CreateSubtitles,
     CreateVideoAssemblyPlan,
     CreateVoiceover,
     DownloadClips,
@@ -27,6 +28,7 @@ from backend.app.application.use_cases import (
     GenerateSceneTable,
     GenerateScriptDraft,
     GenerateStockPlan,
+    GenerateSubtitles,
     GenerateVideoAssemblyPlan,
     GenerateVoiceover,
     GetLatestClipCandidateSet,
@@ -35,6 +37,7 @@ from backend.app.application.use_cases import (
     GetLatestSelectedClipSet,
     GetLatestScriptDraft,
     GetLatestStockPlan,
+    GetLatestSubtitles,
     GetLatestVideoAssemblyPlan,
     GetLatestVoiceover,
     ListClipCandidateSets,
@@ -43,6 +46,7 @@ from backend.app.application.use_cases import (
     ListSelectedClipSets,
     ListScriptDrafts,
     ListStockPlans,
+    ListSubtitles,
     ListVideoAssemblyPlans,
     ListVoiceovers,
     RetrieveClipCandidates,
@@ -50,6 +54,7 @@ from backend.app.application.use_cases import (
     SelectClips,
     SelectedClipSet,
     StockPlan,
+    Subtitles,
     VideoAssemblyPlan,
     Voiceover,
 )
@@ -59,6 +64,7 @@ from backend.app.domain import (
     SceneSpec,
     SelectedClip,
     StockQuerySpec,
+    SubtitleSegment,
     VersionedAsset,
     VideoAssemblySegment,
     VoiceoverSegment,
@@ -71,6 +77,7 @@ from backend.app.ports import (
     SceneTablePlanner,
     ScriptDraftGenerator,
     StockClipPlanner,
+    SubtitleComposer,
     StoragePort,
     VersionedAssetRepository,
     VideoAssemblyPlanner,
@@ -135,6 +142,11 @@ def get_clip_downloader(request: Request) -> ClipDownloader:
 def get_voiceover_generator(request: Request) -> VoiceoverGenerator:
     """Resolve the voiceover generator wired at composition time."""
     return request.app.state.voiceover_generator
+
+
+def get_subtitle_composer(request: Request) -> SubtitleComposer:
+    """Resolve the subtitle composer wired at composition time."""
+    return request.app.state.subtitle_composer
 
 
 class CreateScriptDraftRequest(BaseModel):
@@ -490,6 +502,51 @@ class VoiceoverResponse(BaseModel):
             segments=[
                 VoiceoverSegmentModel.from_domain(segment)
                 for segment in voiceover.segments
+            ],
+        )
+
+
+class SubtitleSegmentModel(BaseModel):
+    scene_id: str
+    order_index: int
+    text: str
+    language: str
+    start_seconds: float
+    end_seconds: float
+    duration_seconds: float
+    format: str
+    status: str
+    generation_reason: str
+
+    @classmethod
+    def from_domain(
+        cls, segment: SubtitleSegment
+    ) -> "SubtitleSegmentModel":
+        return cls(
+            scene_id=segment.scene_id,
+            order_index=segment.order_index,
+            text=segment.text,
+            language=segment.language,
+            start_seconds=segment.start_seconds,
+            end_seconds=segment.end_seconds,
+            duration_seconds=segment.duration_seconds,
+            format=segment.format,
+            status=segment.status,
+            generation_reason=segment.generation_reason,
+        )
+
+
+class SubtitlesResponse(BaseModel):
+    asset: AssetResponse
+    segments: list[SubtitleSegmentModel]
+
+    @classmethod
+    def from_subtitles(cls, subtitles: Subtitles) -> "SubtitlesResponse":
+        return cls(
+            asset=AssetResponse.from_asset(subtitles.asset),
+            segments=[
+                SubtitleSegmentModel.from_domain(segment)
+                for segment in subtitles.segments
             ],
         )
 
@@ -972,3 +1029,56 @@ def get_latest_voiceover(
 ) -> VoiceoverResponse:
     voiceover = GetLatestVoiceover(asset_repository, storage).execute(run_id)
     return VoiceoverResponse.from_voiceover(voiceover)
+
+
+@router.post(
+    "/{run_id}/subtitles/generate",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AssetResponse,
+)
+def generate_subtitles(
+    run_id: str,
+    run_repository: RunRepository = Depends(get_run_repository),
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+    subtitle_composer: SubtitleComposer = Depends(get_subtitle_composer),
+) -> AssetResponse:
+    create_subtitles = CreateSubtitles(
+        run_repository, asset_repository, storage
+    )
+    get_latest_voiceover = GetLatestVoiceover(asset_repository, storage)
+    asset = GenerateSubtitles(
+        run_repository,
+        subtitle_composer,
+        get_latest_voiceover,
+        create_subtitles,
+    ).execute(run_id)
+    return AssetResponse.from_asset(asset)
+
+
+@router.get("/{run_id}/subtitles", response_model=list[AssetResponse])
+def list_subtitles(
+    run_id: str,
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+) -> list[AssetResponse]:
+    assets = ListSubtitles(asset_repository).execute(run_id)
+    return [AssetResponse.from_asset(asset) for asset in assets]
+
+
+@router.get(
+    "/{run_id}/subtitles/latest",
+    response_model=SubtitlesResponse,
+)
+def get_latest_subtitles(
+    run_id: str,
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+) -> SubtitlesResponse:
+    subtitles = GetLatestSubtitles(asset_repository, storage).execute(run_id)
+    return SubtitlesResponse.from_subtitles(subtitles)
