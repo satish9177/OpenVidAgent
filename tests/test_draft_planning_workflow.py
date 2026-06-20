@@ -403,6 +403,106 @@ def test_prompt_to_scenes_happy_path_advances_through_every_status() -> None:
         assert "subtitle_uri" not in subtitle_segment
         expected_start = expected_end
 
+    # 21. Generate the final metadata-only render plan by joining the latest
+    # assembly, downloaded clips, voiceover, and subtitle manifests.
+    render_plan = client.post(f"/runs/{run_id}/render-plans/generate")
+    assert render_plan.status_code == status.HTTP_201_CREATED
+    render_plan_body = render_plan.json()
+    assert render_plan_body["kind"] == "render_plan"
+    assert render_plan_body["version"] == 1
+    render_metadata = render_plan_body["metadata"]
+    assert render_metadata["source"] == "generated"
+    assert render_metadata["video_assembly_plan_asset_id"] == (
+        assembly_body["asset_id"]
+    )
+    assert render_metadata["downloaded_clips_asset_id"] == (
+        downloaded_body["asset_id"]
+    )
+    assert render_metadata["voiceover_asset_id"] == voiceover_body["asset_id"]
+    assert render_metadata["subtitles_asset_id"] == subtitles_body["asset_id"]
+    assert render_metadata["aspect_ratio"] == "16:9"
+    assert render_metadata["resolution_width"] == "1920"
+    assert render_metadata["resolution_height"] == "1080"
+    assert render_metadata["fps"] == "30"
+    assert render_metadata["container"] == "mp4"
+    assert render_metadata["render_intent"] == "voiceover_b_roll"
+
+    # 22. Parsed render-plan rows preserve assembly order and join every
+    # upstream metadata source without probing or rendering media.
+    latest_render_plan = client.get(f"/runs/{run_id}/render-plans/latest")
+    assert latest_render_plan.status_code == status.HTTP_200_OK
+    latest_render_plan_body = latest_render_plan.json()
+    assert latest_render_plan_body["asset"] == render_plan_body
+    render_segments = latest_render_plan_body["segments"]
+    assert len(render_segments) == len(segments)
+    assert [segment["order_index"] for segment in render_segments] == [
+        segment["order_index"] for segment in segments
+    ]
+
+    downloaded_by_order = {
+        clip["order_index"]: clip for clip in downloaded_clips
+    }
+    subtitles_by_order = {
+        segment["order_index"]: segment for segment in subtitle_segments
+    }
+    expected_visual_start = 0.0
+    expected_voiceover_start = 0.0
+    for render_segment in render_segments:
+        order_index = render_segment["order_index"]
+        assembly_segment = segments_by_order[order_index]
+        downloaded_clip = downloaded_by_order[order_index]
+        voiceover_segment = voiceover_by_order[order_index]
+        subtitle_segment = subtitles_by_order[order_index]
+        expected_visual_end = (
+            expected_visual_start
+            + assembly_segment["target_duration_seconds"]
+        )
+        expected_voiceover_end = (
+            expected_voiceover_start
+            + voiceover_segment["duration_seconds"]
+        )
+
+        assert render_segment["scene_id"] == assembly_segment["scene_id"]
+        assert render_segment["clip_uri"] == downloaded_clip["local_uri"]
+        assert render_segment["clip_provider"] == downloaded_clip["provider"]
+        assert render_segment["clip_provider_id"] == (
+            downloaded_clip["provider_clip_id"]
+        )
+        assert render_segment["visual_start_seconds"] == expected_visual_start
+        assert render_segment["visual_end_seconds"] == expected_visual_end
+        assert render_segment["visual_duration_seconds"] == (
+            assembly_segment["target_duration_seconds"]
+        )
+        assert render_segment["voiceover_uri"] == voiceover_segment["audio_uri"]
+        # The voiceover window folds from narration durations, independent of
+        # the visual timeline. Assert it is internally consistent rather than
+        # tied to the visual window: the two coincide here only because the stub
+        # narration duration equals the visual target duration.
+        assert render_segment["voiceover_start_seconds"] == (
+            expected_voiceover_start
+        )
+        assert render_segment["voiceover_end_seconds"] == expected_voiceover_end
+        assert render_segment["voiceover_duration_seconds"] == (
+            voiceover_segment["duration_seconds"]
+        )
+        assert (
+            render_segment["voiceover_end_seconds"]
+            - render_segment["voiceover_start_seconds"]
+            == render_segment["voiceover_duration_seconds"]
+        )
+        assert render_segment["subtitle_text"] == subtitle_segment["text"]
+        assert render_segment["subtitle_start_seconds"] == (
+            subtitle_segment["start_seconds"]
+        )
+        assert render_segment["subtitle_end_seconds"] == (
+            subtitle_segment["end_seconds"]
+        )
+        assert render_segment["subtitle_language"] == (
+            subtitle_segment["language"]
+        )
+        expected_visual_start = expected_visual_end
+        expected_voiceover_start = expected_voiceover_end
+
     final_run = client.get(f"/runs/{run_id}").json()
     assert final_run["status"] == "scenes_approved"
     assert final_run["status"] != "rendered"

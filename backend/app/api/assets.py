@@ -16,6 +16,7 @@ from backend.app.application.use_cases import (
     ClipCandidateSet,
     CreateClipCandidateSet,
     CreateDownloadedClipSet,
+    CreateRenderPlan,
     CreateSceneTable,
     CreateSelectedClipSet,
     CreateScriptDraft,
@@ -26,6 +27,7 @@ from backend.app.application.use_cases import (
     DownloadClips,
     DownloadedClipSet,
     GenerateSceneTable,
+    GenerateRenderPlan,
     GenerateScriptDraft,
     GenerateStockPlan,
     GenerateSubtitles,
@@ -33,6 +35,7 @@ from backend.app.application.use_cases import (
     GenerateVoiceover,
     GetLatestClipCandidateSet,
     GetLatestDownloadedClipSet,
+    GetLatestRenderPlan,
     GetLatestSceneTable,
     GetLatestSelectedClipSet,
     GetLatestScriptDraft,
@@ -42,6 +45,7 @@ from backend.app.application.use_cases import (
     GetLatestVoiceover,
     ListClipCandidateSets,
     ListDownloadedClipSets,
+    ListRenderPlans,
     ListSceneTables,
     ListSelectedClipSets,
     ListScriptDrafts,
@@ -50,6 +54,7 @@ from backend.app.application.use_cases import (
     ListVideoAssemblyPlans,
     ListVoiceovers,
     RetrieveClipCandidates,
+    RenderPlan,
     SceneTable,
     SelectClips,
     SelectedClipSet,
@@ -61,6 +66,7 @@ from backend.app.application.use_cases import (
 from backend.app.domain import (
     ClipCandidate,
     DownloadedClip,
+    RenderPlanSegment,
     SceneSpec,
     SelectedClip,
     StockQuerySpec,
@@ -73,6 +79,7 @@ from backend.app.ports import (
     ClipRetrievalProvider,
     ClipDownloader,
     ClipSelector,
+    RenderPlanner,
     RunRepository,
     SceneTablePlanner,
     ScriptDraftGenerator,
@@ -147,6 +154,11 @@ def get_voiceover_generator(request: Request) -> VoiceoverGenerator:
 def get_subtitle_composer(request: Request) -> SubtitleComposer:
     """Resolve the subtitle composer wired at composition time."""
     return request.app.state.subtitle_composer
+
+
+def get_render_planner(request: Request) -> RenderPlanner:
+    """Resolve the render planner wired at composition time."""
+    return request.app.state.render_planner
 
 
 class CreateScriptDraftRequest(BaseModel):
@@ -547,6 +559,63 @@ class SubtitlesResponse(BaseModel):
             segments=[
                 SubtitleSegmentModel.from_domain(segment)
                 for segment in subtitles.segments
+            ],
+        )
+
+
+class RenderPlanSegmentModel(BaseModel):
+    order_index: int
+    scene_id: str
+    clip_uri: str
+    clip_provider: str
+    clip_provider_id: str
+    visual_start_seconds: float
+    visual_end_seconds: float
+    visual_duration_seconds: float
+    voiceover_uri: str
+    voiceover_start_seconds: float
+    voiceover_end_seconds: float
+    voiceover_duration_seconds: float
+    subtitle_text: str
+    subtitle_start_seconds: float
+    subtitle_end_seconds: float
+    subtitle_language: str
+
+    @classmethod
+    def from_domain(
+        cls, segment: RenderPlanSegment
+    ) -> "RenderPlanSegmentModel":
+        return cls(
+            order_index=segment.order_index,
+            scene_id=segment.scene_id,
+            clip_uri=segment.clip_uri,
+            clip_provider=segment.clip_provider,
+            clip_provider_id=segment.clip_provider_id,
+            visual_start_seconds=segment.visual_start_seconds,
+            visual_end_seconds=segment.visual_end_seconds,
+            visual_duration_seconds=segment.visual_duration_seconds,
+            voiceover_uri=segment.voiceover_uri,
+            voiceover_start_seconds=segment.voiceover_start_seconds,
+            voiceover_end_seconds=segment.voiceover_end_seconds,
+            voiceover_duration_seconds=segment.voiceover_duration_seconds,
+            subtitle_text=segment.subtitle_text,
+            subtitle_start_seconds=segment.subtitle_start_seconds,
+            subtitle_end_seconds=segment.subtitle_end_seconds,
+            subtitle_language=segment.subtitle_language,
+        )
+
+
+class RenderPlanResponse(BaseModel):
+    asset: AssetResponse
+    segments: list[RenderPlanSegmentModel]
+
+    @classmethod
+    def from_render_plan(cls, plan: RenderPlan) -> "RenderPlanResponse":
+        return cls(
+            asset=AssetResponse.from_asset(plan.asset),
+            segments=[
+                RenderPlanSegmentModel.from_domain(segment)
+                for segment in plan.segments
             ],
         )
 
@@ -1082,3 +1151,58 @@ def get_latest_subtitles(
 ) -> SubtitlesResponse:
     subtitles = GetLatestSubtitles(asset_repository, storage).execute(run_id)
     return SubtitlesResponse.from_subtitles(subtitles)
+
+
+@router.post(
+    "/{run_id}/render-plans/generate",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AssetResponse,
+)
+def generate_render_plan(
+    run_id: str,
+    run_repository: RunRepository = Depends(get_run_repository),
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+    render_planner: RenderPlanner = Depends(get_render_planner),
+) -> AssetResponse:
+    create_render_plan = CreateRenderPlan(
+        run_repository, asset_repository, storage
+    )
+    asset = GenerateRenderPlan(
+        run_repository,
+        render_planner,
+        GetLatestVideoAssemblyPlan(asset_repository, storage),
+        GetLatestDownloadedClipSet(asset_repository, storage),
+        GetLatestVoiceover(asset_repository, storage),
+        GetLatestSubtitles(asset_repository, storage),
+        create_render_plan,
+    ).execute(run_id)
+    return AssetResponse.from_asset(asset)
+
+
+@router.get("/{run_id}/render-plans", response_model=list[AssetResponse])
+def list_render_plans(
+    run_id: str,
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+) -> list[AssetResponse]:
+    assets = ListRenderPlans(asset_repository).execute(run_id)
+    return [AssetResponse.from_asset(asset) for asset in assets]
+
+
+@router.get(
+    "/{run_id}/render-plans/latest",
+    response_model=RenderPlanResponse,
+)
+def get_latest_render_plan(
+    run_id: str,
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+) -> RenderPlanResponse:
+    plan = GetLatestRenderPlan(asset_repository, storage).execute(run_id)
+    return RenderPlanResponse.from_render_plan(plan)

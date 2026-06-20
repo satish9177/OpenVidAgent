@@ -22,6 +22,7 @@ class AssetKind(str, Enum):
     VOICE = "voice"
     SUBTITLE_MANIFEST = "subtitle_manifest"
     SUBTITLE = "subtitle"
+    RENDER_PLAN = "render_plan"
     RENDER = "render"
 
 
@@ -183,6 +184,26 @@ class SubtitleSegment:
     format: str
     status: str
     generation_reason: str
+
+
+@dataclass(frozen=True)
+class RenderPlanSegment:
+    order_index: int
+    scene_id: str
+    clip_uri: str
+    clip_provider: str
+    clip_provider_id: str
+    visual_start_seconds: float
+    visual_end_seconds: float
+    visual_duration_seconds: float
+    voiceover_uri: str
+    voiceover_start_seconds: float
+    voiceover_end_seconds: float
+    voiceover_duration_seconds: float
+    subtitle_text: str
+    subtitle_start_seconds: float
+    subtitle_end_seconds: float
+    subtitle_language: str
 
 
 @dataclass(frozen=True)
