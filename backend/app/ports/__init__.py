@@ -1,6 +1,7 @@
 """Interfaces owned by the application boundary."""
 
 from backend.app.ports.providers import (
+    ClipDownloader,
     ClipRetrievalProvider,
     ClipSelector,
     Renderer,
@@ -20,6 +21,7 @@ from backend.app.ports.repositories import (
 )
 
 __all__ = [
+    "ClipDownloader",
     "ClipRetrievalProvider",
     "ClipSelector",
     "JobQueuePort",

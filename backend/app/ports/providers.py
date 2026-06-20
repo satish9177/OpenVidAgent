@@ -7,6 +7,7 @@ from typing import Protocol, runtime_checkable
 
 from backend.app.domain import (
     ClipCandidate,
+    DownloadedClip,
     RenderSpec,
     SceneSpec,
     SelectedClip,
@@ -72,6 +73,15 @@ class VideoAssemblyPlanner(Protocol):
         selected_clips: Sequence[SelectedClip],
     ) -> Sequence[VideoAssemblySegment]:
         """Create metadata-only timeline segments."""
+        ...
+
+
+@runtime_checkable
+class ClipDownloader(Protocol):
+    def download(
+        self, run_id: str, segment: VideoAssemblySegment
+    ) -> DownloadedClip:
+        """Create a local clip reference from assembly segment metadata."""
         ...
 
 
