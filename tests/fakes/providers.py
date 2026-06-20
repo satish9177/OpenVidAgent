@@ -9,6 +9,7 @@ from backend.app.domain import (
     ClipCandidate,
     DownloadedClip,
     RenderSpec,
+    RenderPlanSegment,
     SceneSpec,
     SelectedClip,
     StockQuerySpec,
@@ -22,6 +23,7 @@ from backend.app.ports import (
     ClipDownloader,
     ClipSelector,
     Renderer,
+    RenderPlanner,
     SceneTablePlanner,
     ScriptDraftGenerator,
     StockClipPlanner,
@@ -272,6 +274,39 @@ class FakeSubtitleComposer(SubtitleComposer):
             status="available",
             generation_reason="fake_composition",
         )
+
+
+class FakeRenderPlanner(RenderPlanner):
+    def __init__(
+        self,
+        render_plan_segments: Sequence[RenderPlanSegment] = (),
+    ) -> None:
+        self._render_plan_segments = tuple(render_plan_segments)
+        self.calls: list[
+            tuple[
+                tuple[VideoAssemblySegment, ...],
+                tuple[DownloadedClip, ...],
+                tuple[VoiceoverSegment, ...],
+                tuple[SubtitleSegment, ...],
+            ]
+        ] = []
+
+    def plan(
+        self,
+        assembly_segments: Sequence[VideoAssemblySegment],
+        downloaded_clips: Sequence[DownloadedClip],
+        voiceover_segments: Sequence[VoiceoverSegment],
+        subtitle_segments: Sequence[SubtitleSegment],
+    ) -> Sequence[RenderPlanSegment]:
+        self.calls.append(
+            (
+                tuple(assembly_segments),
+                tuple(downloaded_clips),
+                tuple(voiceover_segments),
+                tuple(subtitle_segments),
+            )
+        )
+        return self._render_plan_segments
 
 
 class FakeTTSProvider(TTSProvider):

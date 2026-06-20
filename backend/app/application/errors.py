@@ -57,3 +57,31 @@ class ApprovedScriptRequiredError(ValueError):
             f"Run {run_id!r} has no approved script to plan scenes from"
         )
         self.run_id = run_id
+
+
+class RenderPlanInputMismatchError(ValueError):
+    """Raised when an upstream render-plan artifact has incompatible order."""
+
+    def __init__(
+        self,
+        run_id: str,
+        source: str,
+        expected_order_indexes: tuple[int, ...],
+        actual_order_indexes: tuple[int, ...],
+    ) -> None:
+        expected = set(expected_order_indexes)
+        actual = set(actual_order_indexes)
+        self.run_id = run_id
+        self.source = source
+        self.expected_order_indexes = tuple(sorted(expected))
+        self.actual_order_indexes = tuple(sorted(actual))
+        self.missing_order_indexes = tuple(sorted(expected - actual))
+        self.extra_order_indexes = tuple(sorted(actual - expected))
+        self.expected_count = len(expected_order_indexes)
+        self.actual_count = len(actual_order_indexes)
+        super().__init__(
+            f"Render plan input {source!r} does not match assembly order for "
+            f"run {run_id!r}: expected {self.expected_order_indexes} "
+            f"({self.expected_count} records), got {self.actual_order_indexes} "
+            f"({self.actual_count} records)"
+        )

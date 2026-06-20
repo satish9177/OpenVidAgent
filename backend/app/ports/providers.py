@@ -8,6 +8,7 @@ from typing import Protocol, runtime_checkable
 from backend.app.domain import (
     ClipCandidate,
     DownloadedClip,
+    RenderPlanSegment,
     RenderSpec,
     SceneSpec,
     SelectedClip,
@@ -108,6 +109,19 @@ class SubtitleComposer(Protocol):
         language: str,
     ) -> SubtitleSegment:
         """Create one metadata-only timed subtitle segment."""
+        ...
+
+
+@runtime_checkable
+class RenderPlanner(Protocol):
+    def plan(
+        self,
+        assembly_segments: Sequence[VideoAssemblySegment],
+        downloaded_clips: Sequence[DownloadedClip],
+        voiceover_segments: Sequence[VoiceoverSegment],
+        subtitle_segments: Sequence[SubtitleSegment],
+    ) -> Sequence[RenderPlanSegment]:
+        """Join upstream metadata into an ordered render plan."""
         ...
 
 

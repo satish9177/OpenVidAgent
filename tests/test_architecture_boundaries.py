@@ -13,6 +13,7 @@ from backend.app.application.use_cases import (
     ApproveScript,
     CreateClipCandidateSet,
     CreateDownloadedClipSet,
+    CreateRenderPlan,
     CreateRun,
     CreateSceneTable,
     CreateSelectedClipSet,
@@ -22,6 +23,7 @@ from backend.app.application.use_cases import (
     CreateVideoAssemblyPlan,
     CreateVoiceover,
     GenerateSceneTable,
+    GenerateRenderPlan,
     GenerateScriptDraft,
     GenerateStockPlan,
     GenerateSubtitles,
@@ -30,6 +32,7 @@ from backend.app.application.use_cases import (
     DownloadClips,
     GetLatestClipCandidateSet,
     GetLatestDownloadedClipSet,
+    GetLatestRenderPlan,
     GetLatestSceneTable,
     GetLatestSelectedClipSet,
     GetLatestScriptDraft,
@@ -43,6 +46,7 @@ from backend.app.application.use_cases import (
     ListScriptDrafts,
     ListClipCandidateSets,
     ListDownloadedClipSets,
+    ListRenderPlans,
     ListStockPlans,
     ListSubtitles,
     ListVideoAssemblyPlans,
@@ -58,6 +62,7 @@ from backend.app.ports import (
     ClipRetrievalProvider,
     ClipSelector,
     Renderer,
+    RenderPlanner,
     RunRepository,
     SceneTablePlanner,
     ScriptDraftGenerator,
@@ -144,6 +149,7 @@ def test_provider_interfaces_live_in_ports() -> None:
         TTSProvider,
         SubtitleBuilder,
         Renderer,
+        RenderPlanner,
     )
 
     for provider in providers:
@@ -280,6 +286,17 @@ def test_stock_asset_use_cases_depend_only_on_expected_ports_and_factories() -> 
         },
         ListSubtitles: {"asset_repository": VersionedAssetRepository},
         GetLatestSubtitles: {
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+        },
+        CreateRenderPlan: {
+            "run_repository": RunRepository,
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+            "asset_id_factory": Callable[[], str] | None,
+        },
+        ListRenderPlans: {"asset_repository": VersionedAssetRepository},
+        GetLatestRenderPlan: {
             "asset_repository": VersionedAssetRepository,
             "storage": StoragePort,
         },
@@ -438,6 +455,26 @@ def test_stub_subtitle_composer_import_confined_to_composition_root() -> None:
     assert not offenders
 
 
+def test_stub_render_planner_import_confined_to_composition_root() -> None:
+    allowed = APP_ROOT / "main.py"
+    offenders: list[Path] = []
+
+    for path in _python_files(APP_ROOT):
+        relative_parts = path.relative_to(APP_ROOT).parts
+        if "infrastructure" in relative_parts:
+            continue
+        if path == allowed:
+            continue
+        if _imports_symbol(
+            path,
+            module_prefix="backend.app.infrastructure.generation",
+            symbol="StubRenderPlanner",
+        ):
+            offenders.append(path)
+
+    assert not offenders
+
+
 def test_generation_use_cases_depend_on_ports_and_create_use_cases() -> None:
     expected: dict[type, dict[str, type]] = {
         GenerateScriptDraft: {
@@ -492,6 +529,15 @@ def test_generation_use_cases_depend_on_ports_and_create_use_cases() -> None:
             "subtitle_composer": SubtitleComposer,
             "get_latest_voiceover": GetLatestVoiceover,
             "create_subtitles": CreateSubtitles,
+        },
+        GenerateRenderPlan: {
+            "run_repository": RunRepository,
+            "render_planner": RenderPlanner,
+            "get_latest_video_assembly_plan": GetLatestVideoAssemblyPlan,
+            "get_latest_downloaded_clip_set": GetLatestDownloadedClipSet,
+            "get_latest_voiceover": GetLatestVoiceover,
+            "get_latest_subtitles": GetLatestSubtitles,
+            "create_render_plan": CreateRenderPlan,
         },
     }
 

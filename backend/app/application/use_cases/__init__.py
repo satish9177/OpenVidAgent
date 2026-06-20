@@ -24,6 +24,13 @@ from backend.app.application.use_cases.run_lifecycle import (
     MarkScenesReady,
     MarkScriptReady,
 )
+from backend.app.application.use_cases.render_plan_assets import (
+    CreateRenderPlan,
+    GenerateRenderPlan,
+    GetLatestRenderPlan,
+    ListRenderPlans,
+    RenderPlan,
+)
 from backend.app.application.use_cases.scene_assets import (
     CreateSceneTable,
     GenerateSceneTable,
@@ -80,6 +87,7 @@ __all__ = [
     "CreateClipCandidateSet",
     "CreateDownloadedClipSet",
     "CreateRun",
+    "CreateRenderPlan",
     "CreateSceneTable",
     "CreateScriptDraft",
     "CreateSelectedClipSet",
@@ -90,6 +98,7 @@ __all__ = [
     "DownloadClips",
     "DownloadedClipSet",
     "GenerateSceneTable",
+    "GenerateRenderPlan",
     "GenerateScriptDraft",
     "GenerateStockPlan",
     "GenerateSubtitles",
@@ -98,6 +107,7 @@ __all__ = [
     "GetLatestClipCandidateSet",
     "GetLatestDownloadedClipSet",
     "GetLatestSceneTable",
+    "GetLatestRenderPlan",
     "GetLatestScriptDraft",
     "GetLatestSelectedClipSet",
     "GetLatestStockPlan",
@@ -108,6 +118,7 @@ __all__ = [
     "HealthCheck",
     "HealthStatus",
     "ListSceneTables",
+    "ListRenderPlans",
     "ListSelectedClipSets",
     "ListScriptDrafts",
     "ListClipCandidateSets",
@@ -125,6 +136,7 @@ __all__ = [
     "StockPlan",
     "Subtitles",
     "RetrieveClipCandidates",
+    "RenderPlan",
     "VideoAssemblyPlan",
     "Voiceover",
 ]
