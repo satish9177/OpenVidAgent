@@ -17,6 +17,7 @@ from backend.app.application.use_cases import (
     CreateClipCandidateSet,
     CreateDownloadedClipSet,
     CreateRenderPlan,
+    CreateRenderOutput,
     CreateSceneTable,
     CreateSelectedClipSet,
     CreateScriptDraft,
@@ -28,6 +29,7 @@ from backend.app.application.use_cases import (
     DownloadedClipSet,
     GenerateSceneTable,
     GenerateRenderPlan,
+    GenerateRenderOutput,
     GenerateScriptDraft,
     GenerateStockPlan,
     GenerateSubtitles,
@@ -36,6 +38,7 @@ from backend.app.application.use_cases import (
     GetLatestClipCandidateSet,
     GetLatestDownloadedClipSet,
     GetLatestRenderPlan,
+    GetLatestRenderOutput,
     GetLatestSceneTable,
     GetLatestSelectedClipSet,
     GetLatestScriptDraft,
@@ -46,6 +49,7 @@ from backend.app.application.use_cases import (
     ListClipCandidateSets,
     ListDownloadedClipSets,
     ListRenderPlans,
+    ListRenderOutputs,
     ListSceneTables,
     ListSelectedClipSets,
     ListScriptDrafts,
@@ -55,6 +59,7 @@ from backend.app.application.use_cases import (
     ListVoiceovers,
     RetrieveClipCandidates,
     RenderPlan,
+    RenderOutput,
     SceneTable,
     SelectClips,
     SelectedClipSet,
@@ -67,6 +72,7 @@ from backend.app.domain import (
     ClipCandidate,
     DownloadedClip,
     RenderPlanSegment,
+    RenderOutputManifest,
     SceneSpec,
     SelectedClip,
     StockQuerySpec,
@@ -80,6 +86,7 @@ from backend.app.ports import (
     ClipDownloader,
     ClipSelector,
     RenderPlanner,
+    RenderOutputGenerator,
     RunRepository,
     SceneTablePlanner,
     ScriptDraftGenerator,
@@ -159,6 +166,11 @@ def get_subtitle_composer(request: Request) -> SubtitleComposer:
 def get_render_planner(request: Request) -> RenderPlanner:
     """Resolve the render planner wired at composition time."""
     return request.app.state.render_planner
+
+
+def get_render_output_generator(request: Request) -> RenderOutputGenerator:
+    """Resolve the render-output generator wired at composition time."""
+    return request.app.state.render_output_generator
 
 
 class CreateScriptDraftRequest(BaseModel):
@@ -617,6 +629,58 @@ class RenderPlanResponse(BaseModel):
                 RenderPlanSegmentModel.from_domain(segment)
                 for segment in plan.segments
             ],
+        )
+
+
+class RenderOutputManifestModel(BaseModel):
+    status: str
+    render_plan_asset_id: str
+    render_plan_version: int
+    render_intent: str
+    aspect_ratio: str
+    container: str
+    resolution_width: int
+    resolution_height: int
+    fps: float
+    segment_count: int
+    estimated_duration_seconds: float
+    output_uri: str | None
+    generation_reason: str
+
+    @classmethod
+    def from_domain(
+        cls, manifest: RenderOutputManifest
+    ) -> "RenderOutputManifestModel":
+        return cls(
+            status=manifest.status,
+            render_plan_asset_id=manifest.render_plan_asset_id,
+            render_plan_version=manifest.render_plan_version,
+            render_intent=manifest.render_intent,
+            aspect_ratio=manifest.aspect_ratio,
+            container=manifest.container,
+            resolution_width=manifest.resolution_width,
+            resolution_height=manifest.resolution_height,
+            fps=manifest.fps,
+            segment_count=manifest.segment_count,
+            estimated_duration_seconds=manifest.estimated_duration_seconds,
+            output_uri=manifest.output_uri,
+            generation_reason=manifest.generation_reason,
+        )
+
+
+class RenderOutputResponse(BaseModel):
+    asset: AssetResponse
+    manifest: RenderOutputManifestModel
+
+    @classmethod
+    def from_render_output(
+        cls, render_output: RenderOutput
+    ) -> "RenderOutputResponse":
+        return cls(
+            asset=AssetResponse.from_asset(render_output.asset),
+            manifest=RenderOutputManifestModel.from_domain(
+                render_output.manifest
+            ),
         )
 
 
@@ -1206,3 +1270,59 @@ def get_latest_render_plan(
 ) -> RenderPlanResponse:
     plan = GetLatestRenderPlan(asset_repository, storage).execute(run_id)
     return RenderPlanResponse.from_render_plan(plan)
+
+
+@router.post(
+    "/{run_id}/render-outputs/generate",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AssetResponse,
+)
+def generate_render_output(
+    run_id: str,
+    run_repository: RunRepository = Depends(get_run_repository),
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+    render_output_generator: RenderOutputGenerator = Depends(
+        get_render_output_generator
+    ),
+) -> AssetResponse:
+    create_render_output = CreateRenderOutput(
+        run_repository, asset_repository, storage
+    )
+    asset = GenerateRenderOutput(
+        run_repository,
+        render_output_generator,
+        GetLatestRenderPlan(asset_repository, storage),
+        create_render_output,
+    ).execute(run_id)
+    return AssetResponse.from_asset(asset)
+
+
+@router.get("/{run_id}/render-outputs", response_model=list[AssetResponse])
+def list_render_outputs(
+    run_id: str,
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+) -> list[AssetResponse]:
+    assets = ListRenderOutputs(asset_repository).execute(run_id)
+    return [AssetResponse.from_asset(asset) for asset in assets]
+
+
+@router.get(
+    "/{run_id}/render-outputs/latest",
+    response_model=RenderOutputResponse,
+)
+def get_latest_render_output(
+    run_id: str,
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+) -> RenderOutputResponse:
+    render_output = GetLatestRenderOutput(
+        asset_repository, storage
+    ).execute(run_id)
+    return RenderOutputResponse.from_render_output(render_output)

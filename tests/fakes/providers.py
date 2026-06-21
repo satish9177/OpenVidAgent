@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from backend.app.domain import (
     AssetKind,
@@ -10,6 +10,7 @@ from backend.app.domain import (
     DownloadedClip,
     RenderSpec,
     RenderPlanSegment,
+    RenderOutputManifest,
     SceneSpec,
     SelectedClip,
     StockQuerySpec,
@@ -24,6 +25,7 @@ from backend.app.ports import (
     ClipSelector,
     Renderer,
     RenderPlanner,
+    RenderOutputGenerator,
     SceneTablePlanner,
     ScriptDraftGenerator,
     StockClipPlanner,
@@ -307,6 +309,57 @@ class FakeRenderPlanner(RenderPlanner):
             )
         )
         return self._render_plan_segments
+
+
+class FakeRenderOutputGenerator(RenderOutputGenerator):
+    def __init__(self, manifest: RenderOutputManifest | None = None) -> None:
+        self._manifest = manifest
+        self.calls: list[
+            tuple[
+                str,
+                int,
+                tuple[RenderPlanSegment, ...],
+                dict[str, str],
+            ]
+        ] = []
+
+    def generate(
+        self,
+        render_plan_asset_id: str,
+        render_plan_version: int,
+        render_plan_segments: Sequence[RenderPlanSegment],
+        render_profile: Mapping[str, str],
+    ) -> RenderOutputManifest:
+        captured_segments = tuple(render_plan_segments)
+        captured_profile = dict(render_profile)
+        self.calls.append(
+            (
+                render_plan_asset_id,
+                render_plan_version,
+                captured_segments,
+                captured_profile,
+            )
+        )
+        if self._manifest is not None:
+            return self._manifest
+        return RenderOutputManifest(
+            status="not_rendered",
+            render_plan_asset_id=render_plan_asset_id,
+            render_plan_version=render_plan_version,
+            render_intent=captured_profile["render_intent"],
+            aspect_ratio=captured_profile["aspect_ratio"],
+            container=captured_profile["container"],
+            resolution_width=int(captured_profile["resolution_width"]),
+            resolution_height=int(captured_profile["resolution_height"]),
+            fps=float(captured_profile["fps"]),
+            segment_count=len(captured_segments),
+            estimated_duration_seconds=max(
+                (segment.visual_end_seconds for segment in captured_segments),
+                default=0.0,
+            ),
+            output_uri=None,
+            generation_reason="fake_generation",
+        )
 
 
 class FakeTTSProvider(TTSProvider):
