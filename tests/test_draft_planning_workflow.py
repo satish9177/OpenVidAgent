@@ -503,6 +503,45 @@ def test_prompt_to_scenes_happy_path_advances_through_every_status() -> None:
         expected_visual_start = expected_visual_end
         expected_voiceover_start = expected_voiceover_end
 
+    # 23. Generate the metadata-only render output manifest from the latest
+    # render plan without creating or probing a media file.
+    render_output = client.post(f"/runs/{run_id}/render-outputs/generate")
+    assert render_output.status_code == status.HTTP_201_CREATED
+    render_output_body = render_output.json()
+    assert render_output_body["kind"] == "render_output"
+    assert render_output_body["version"] == 1
+    output_metadata = render_output_body["metadata"]
+    assert output_metadata["source"] == "generated"
+    assert output_metadata["status"] == "not_rendered"
+    assert output_metadata["render_plan_asset_id"] == render_plan_body["asset_id"]
+    assert output_metadata["render_plan_version"] == "1"
+    for profile_key in (
+        "aspect_ratio",
+        "resolution_width",
+        "resolution_height",
+        "fps",
+        "container",
+        "render_intent",
+    ):
+        assert output_metadata[profile_key] == render_metadata[profile_key]
+
+    # 24. The latest endpoint returns the typed, truthful manifest and leaves
+    # the run lifecycle unchanged.
+    latest_render_output = client.get(f"/runs/{run_id}/render-outputs/latest")
+    assert latest_render_output.status_code == status.HTTP_200_OK
+    latest_render_output_body = latest_render_output.json()
+    assert latest_render_output_body["asset"] == render_output_body
+    manifest = latest_render_output_body["manifest"]
+    assert manifest["status"] == "not_rendered"
+    assert manifest["output_uri"] is None
+    assert manifest["render_plan_asset_id"] == render_plan_body["asset_id"]
+    assert manifest["render_plan_version"] == 1
+    assert manifest["segment_count"] == len(render_segments)
+    assert manifest["estimated_duration_seconds"] == max(
+        segment["visual_end_seconds"] for segment in render_segments
+    )
+    assert manifest["generation_reason"] == "metadata_only_foundation"
+
     final_run = client.get(f"/runs/{run_id}").json()
     assert final_run["status"] == "scenes_approved"
     assert final_run["status"] != "rendered"

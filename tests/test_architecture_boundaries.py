@@ -14,6 +14,7 @@ from backend.app.application.use_cases import (
     CreateClipCandidateSet,
     CreateDownloadedClipSet,
     CreateRenderPlan,
+    CreateRenderOutput,
     CreateRun,
     CreateSceneTable,
     CreateSelectedClipSet,
@@ -24,6 +25,7 @@ from backend.app.application.use_cases import (
     CreateVoiceover,
     GenerateSceneTable,
     GenerateRenderPlan,
+    GenerateRenderOutput,
     GenerateScriptDraft,
     GenerateStockPlan,
     GenerateSubtitles,
@@ -33,6 +35,7 @@ from backend.app.application.use_cases import (
     GetLatestClipCandidateSet,
     GetLatestDownloadedClipSet,
     GetLatestRenderPlan,
+    GetLatestRenderOutput,
     GetLatestSceneTable,
     GetLatestSelectedClipSet,
     GetLatestScriptDraft,
@@ -47,6 +50,7 @@ from backend.app.application.use_cases import (
     ListClipCandidateSets,
     ListDownloadedClipSets,
     ListRenderPlans,
+    ListRenderOutputs,
     ListStockPlans,
     ListSubtitles,
     ListVideoAssemblyPlans,
@@ -63,6 +67,7 @@ from backend.app.ports import (
     ClipSelector,
     Renderer,
     RenderPlanner,
+    RenderOutputGenerator,
     RunRepository,
     SceneTablePlanner,
     ScriptDraftGenerator,
@@ -150,6 +155,7 @@ def test_provider_interfaces_live_in_ports() -> None:
         SubtitleBuilder,
         Renderer,
         RenderPlanner,
+        RenderOutputGenerator,
     )
 
     for provider in providers:
@@ -297,6 +303,17 @@ def test_stock_asset_use_cases_depend_only_on_expected_ports_and_factories() -> 
         },
         ListRenderPlans: {"asset_repository": VersionedAssetRepository},
         GetLatestRenderPlan: {
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+        },
+        CreateRenderOutput: {
+            "run_repository": RunRepository,
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+            "asset_id_factory": Callable[[], str] | None,
+        },
+        ListRenderOutputs: {"asset_repository": VersionedAssetRepository},
+        GetLatestRenderOutput: {
             "asset_repository": VersionedAssetRepository,
             "storage": StoragePort,
         },
@@ -475,6 +492,26 @@ def test_stub_render_planner_import_confined_to_composition_root() -> None:
     assert not offenders
 
 
+def test_stub_render_output_generator_import_confined_to_composition_root() -> None:
+    allowed = APP_ROOT / "main.py"
+    offenders: list[Path] = []
+
+    for path in _python_files(APP_ROOT):
+        relative_parts = path.relative_to(APP_ROOT).parts
+        if "infrastructure" in relative_parts:
+            continue
+        if path == allowed:
+            continue
+        if _imports_symbol(
+            path,
+            module_prefix="backend.app.infrastructure.generation",
+            symbol="StubRenderOutputGenerator",
+        ):
+            offenders.append(path)
+
+    assert not offenders
+
+
 def test_generation_use_cases_depend_on_ports_and_create_use_cases() -> None:
     expected: dict[type, dict[str, type]] = {
         GenerateScriptDraft: {
@@ -538,6 +575,12 @@ def test_generation_use_cases_depend_on_ports_and_create_use_cases() -> None:
             "get_latest_voiceover": GetLatestVoiceover,
             "get_latest_subtitles": GetLatestSubtitles,
             "create_render_plan": CreateRenderPlan,
+        },
+        GenerateRenderOutput: {
+            "run_repository": RunRepository,
+            "render_output_generator": RenderOutputGenerator,
+            "get_latest_render_plan": GetLatestRenderPlan,
+            "create_render_output": CreateRenderOutput,
         },
     }
 

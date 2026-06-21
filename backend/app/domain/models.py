@@ -23,6 +23,7 @@ class AssetKind(str, Enum):
     SUBTITLE_MANIFEST = "subtitle_manifest"
     SUBTITLE = "subtitle"
     RENDER_PLAN = "render_plan"
+    RENDER_OUTPUT = "render_output"
     RENDER = "render"
 
 
@@ -204,6 +205,23 @@ class RenderPlanSegment:
     subtitle_start_seconds: float
     subtitle_end_seconds: float
     subtitle_language: str
+
+
+@dataclass(frozen=True)
+class RenderOutputManifest:
+    status: str
+    render_plan_asset_id: str
+    render_plan_version: int
+    render_intent: str
+    aspect_ratio: str
+    container: str
+    resolution_width: int
+    resolution_height: int
+    fps: float
+    segment_count: int
+    estimated_duration_seconds: float
+    output_uri: str | None
+    generation_reason: str
 
 
 @dataclass(frozen=True)

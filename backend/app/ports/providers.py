@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Protocol, runtime_checkable
 
 from backend.app.domain import (
     ClipCandidate,
     DownloadedClip,
     RenderPlanSegment,
+    RenderOutputManifest,
     RenderSpec,
     SceneSpec,
     SelectedClip,
@@ -122,6 +123,19 @@ class RenderPlanner(Protocol):
         subtitle_segments: Sequence[SubtitleSegment],
     ) -> Sequence[RenderPlanSegment]:
         """Join upstream metadata into an ordered render plan."""
+        ...
+
+
+@runtime_checkable
+class RenderOutputGenerator(Protocol):
+    def generate(
+        self,
+        render_plan_asset_id: str,
+        render_plan_version: int,
+        render_plan_segments: Sequence[RenderPlanSegment],
+        render_profile: Mapping[str, str],
+    ) -> RenderOutputManifest:
+        """Describe a metadata-only non-rendered output."""
         ...
 
 

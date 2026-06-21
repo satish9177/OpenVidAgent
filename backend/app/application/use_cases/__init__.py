@@ -31,6 +31,13 @@ from backend.app.application.use_cases.render_plan_assets import (
     ListRenderPlans,
     RenderPlan,
 )
+from backend.app.application.use_cases.render_output_assets import (
+    CreateRenderOutput,
+    GenerateRenderOutput,
+    GetLatestRenderOutput,
+    ListRenderOutputs,
+    RenderOutput,
+)
 from backend.app.application.use_cases.scene_assets import (
     CreateSceneTable,
     GenerateSceneTable,
@@ -88,6 +95,7 @@ __all__ = [
     "CreateDownloadedClipSet",
     "CreateRun",
     "CreateRenderPlan",
+    "CreateRenderOutput",
     "CreateSceneTable",
     "CreateScriptDraft",
     "CreateSelectedClipSet",
@@ -99,6 +107,7 @@ __all__ = [
     "DownloadedClipSet",
     "GenerateSceneTable",
     "GenerateRenderPlan",
+    "GenerateRenderOutput",
     "GenerateScriptDraft",
     "GenerateStockPlan",
     "GenerateSubtitles",
@@ -108,6 +117,7 @@ __all__ = [
     "GetLatestDownloadedClipSet",
     "GetLatestSceneTable",
     "GetLatestRenderPlan",
+    "GetLatestRenderOutput",
     "GetLatestScriptDraft",
     "GetLatestSelectedClipSet",
     "GetLatestStockPlan",
@@ -119,6 +129,7 @@ __all__ = [
     "HealthStatus",
     "ListSceneTables",
     "ListRenderPlans",
+    "ListRenderOutputs",
     "ListSelectedClipSets",
     "ListScriptDrafts",
     "ListClipCandidateSets",
@@ -137,6 +148,7 @@ __all__ = [
     "Subtitles",
     "RetrieveClipCandidates",
     "RenderPlan",
+    "RenderOutput",
     "VideoAssemblyPlan",
     "Voiceover",
 ]
