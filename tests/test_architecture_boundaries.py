@@ -15,6 +15,7 @@ from backend.app.application.use_cases import (
     CreateDownloadedClipSet,
     CreateRenderPlan,
     CreateRenderOutput,
+    CreateRenderReadiness,
     CreateRun,
     CreateSceneTable,
     CreateSelectedClipSet,
@@ -26,6 +27,7 @@ from backend.app.application.use_cases import (
     GenerateSceneTable,
     GenerateRenderPlan,
     GenerateRenderOutput,
+    GenerateRenderReadiness,
     GenerateScriptDraft,
     GenerateStockPlan,
     GenerateSubtitles,
@@ -36,6 +38,7 @@ from backend.app.application.use_cases import (
     GetLatestDownloadedClipSet,
     GetLatestRenderPlan,
     GetLatestRenderOutput,
+    GetLatestRenderReadiness,
     GetLatestSceneTable,
     GetLatestSelectedClipSet,
     GetLatestScriptDraft,
@@ -51,6 +54,7 @@ from backend.app.application.use_cases import (
     ListDownloadedClipSets,
     ListRenderPlans,
     ListRenderOutputs,
+    ListRenderReadiness,
     ListStockPlans,
     ListSubtitles,
     ListVideoAssemblyPlans,
@@ -65,9 +69,11 @@ from backend.app.ports import (
     ClipDownloader,
     ClipRetrievalProvider,
     ClipSelector,
+    FfmpegAvailabilityProbe,
     Renderer,
     RenderPlanner,
     RenderOutputGenerator,
+    RenderReadinessChecker,
     RunRepository,
     SceneTablePlanner,
     ScriptDraftGenerator,
@@ -156,6 +162,8 @@ def test_provider_interfaces_live_in_ports() -> None:
         Renderer,
         RenderPlanner,
         RenderOutputGenerator,
+        RenderReadinessChecker,
+        FfmpegAvailabilityProbe,
     )
 
     for provider in providers:
@@ -314,6 +322,19 @@ def test_stock_asset_use_cases_depend_only_on_expected_ports_and_factories() -> 
         },
         ListRenderOutputs: {"asset_repository": VersionedAssetRepository},
         GetLatestRenderOutput: {
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+        },
+        CreateRenderReadiness: {
+            "run_repository": RunRepository,
+            "asset_repository": VersionedAssetRepository,
+            "storage": StoragePort,
+            "asset_id_factory": Callable[[], str] | None,
+        },
+        ListRenderReadiness: {
+            "asset_repository": VersionedAssetRepository
+        },
+        GetLatestRenderReadiness: {
             "asset_repository": VersionedAssetRepository,
             "storage": StoragePort,
         },
@@ -512,6 +533,31 @@ def test_stub_render_output_generator_import_confined_to_composition_root() -> N
     assert not offenders
 
 
+def test_render_readiness_stubs_import_confined_to_composition_root() -> None:
+    allowed = APP_ROOT / "main.py"
+    symbols = (
+        "StubRenderReadinessChecker",
+        "StubFfmpegAvailabilityProbe",
+    )
+
+    for symbol in symbols:
+        offenders: list[Path] = []
+        for path in _python_files(APP_ROOT):
+            relative_parts = path.relative_to(APP_ROOT).parts
+            if "infrastructure" in relative_parts:
+                continue
+            if path == allowed:
+                continue
+            if _imports_symbol(
+                path,
+                module_prefix="backend.app.infrastructure.generation",
+                symbol=symbol,
+            ):
+                offenders.append(path)
+
+        assert not offenders, symbol
+
+
 def test_generation_use_cases_depend_on_ports_and_create_use_cases() -> None:
     expected: dict[type, dict[str, type]] = {
         GenerateScriptDraft: {
@@ -581,6 +627,14 @@ def test_generation_use_cases_depend_on_ports_and_create_use_cases() -> None:
             "render_output_generator": RenderOutputGenerator,
             "get_latest_render_plan": GetLatestRenderPlan,
             "create_render_output": CreateRenderOutput,
+        },
+        GenerateRenderReadiness: {
+            "run_repository": RunRepository,
+            "render_readiness_checker": RenderReadinessChecker,
+            "ffmpeg_availability_probe": FfmpegAvailabilityProbe,
+            "get_latest_render_plan": GetLatestRenderPlan,
+            "get_latest_render_output": GetLatestRenderOutput,
+            "create_render_readiness": CreateRenderReadiness,
         },
     }
 

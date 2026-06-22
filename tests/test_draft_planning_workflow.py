@@ -542,6 +542,60 @@ def test_prompt_to_scenes_happy_path_advances_through_every_status() -> None:
     )
     assert manifest["generation_reason"] == "metadata_only_foundation"
 
+    # 25. Generate a truthful readiness report over the latest plan and output.
+    readiness = client.post(f"/runs/{run_id}/render-readiness/generate")
+    assert readiness.status_code == status.HTTP_201_CREATED
+    readiness_body = readiness.json()
+    assert readiness_body["kind"] == "render_readiness"
+    assert readiness_body["version"] == 1
+    readiness_metadata = readiness_body["metadata"]
+    assert readiness_metadata["source"] == "generated"
+    assert readiness_metadata["status"] == "blocked"
+    assert readiness_metadata["ffmpeg_availability"] == "not_checked"
+    assert readiness_metadata["render_plan_asset_id"] == (
+        render_plan_body["asset_id"]
+    )
+    assert readiness_metadata["render_output_asset_id"] == (
+        render_output_body["asset_id"]
+    )
+
+    # 26. Current memory references block required clip/voiceover inputs only;
+    # inline subtitles and an unchecked FFmpeg binary remain informational.
+    latest_readiness = client.get(f"/runs/{run_id}/render-readiness/latest")
+    assert latest_readiness.status_code == status.HTTP_200_OK
+    latest_readiness_body = latest_readiness.json()
+    assert latest_readiness_body["asset"] == readiness_body
+    report = latest_readiness_body["report"]
+    assert report["status"] == "blocked"
+    assert report["render_plan_asset_id"] == render_plan_body["asset_id"]
+    assert report["render_plan_version"] == 1
+    assert report["render_output_asset_id"] == render_output_body["asset_id"]
+    assert report["render_output_version"] == 1
+    assert report["ffmpeg_availability"] == "not_checked"
+    assert report["segment_count"] == len(render_segments)
+    assert report["materialized_required_count"] == 0
+    assert report["total_required_count"] == len(render_segments) * 2
+    assert report["blocker_summary"] == [
+        "clip_not_materialized",
+        "voiceover_not_materialized",
+    ]
+    assert "ffmpeg_unavailable" not in report["blocker_summary"]
+    assert report["warnings"] == [
+        "subtitle_manifest_only",
+        "render_output_not_available",
+    ]
+    assert len(report["inputs"]) == len(render_segments) * 3
+    for input_item in report["inputs"]:
+        if input_item["role"] in {"clip", "voiceover"}:
+            assert input_item["required"] is True
+            assert input_item["scheme"] == "memory"
+            assert input_item["status"] == "placeholder"
+        else:
+            assert input_item["role"] == "subtitle"
+            assert input_item["required"] is False
+            assert input_item["scheme"] == "inline"
+            assert input_item["status"] == "placeholder"
+
     final_run = client.get(f"/runs/{run_id}").json()
     assert final_run["status"] == "scenes_approved"
     assert final_run["status"] != "rendered"

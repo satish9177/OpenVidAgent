@@ -9,6 +9,7 @@ from backend.app.domain import (
     ClipCandidate,
     DownloadedClip,
     RenderPlanSegment,
+    RenderReadinessReport,
     RenderOutputManifest,
     RenderSpec,
     SceneSpec,
@@ -136,6 +137,27 @@ class RenderOutputGenerator(Protocol):
         render_profile: Mapping[str, str],
     ) -> RenderOutputManifest:
         """Describe a metadata-only non-rendered output."""
+        ...
+
+
+@runtime_checkable
+class RenderReadinessChecker(Protocol):
+    def check(
+        self,
+        render_plan_asset_id: str,
+        render_plan_version: int,
+        render_plan_segments: Sequence[RenderPlanSegment],
+        render_output: RenderOutputManifest | None,
+        ffmpeg_availability: str,
+    ) -> RenderReadinessReport:
+        """Classify render-plan references as materialized or blocked."""
+        ...
+
+
+@runtime_checkable
+class FfmpegAvailabilityProbe(Protocol):
+    def check(self) -> str:
+        """Report availability without prescribing a probing mechanism."""
         ...
 
 

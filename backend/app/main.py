@@ -27,9 +27,11 @@ from backend.app.infrastructure.generation import (
     DeterministicClipSelector,
     DeterministicVideoAssemblyPlanner,
     EchoScriptDraftGenerator,
+    StubFfmpegAvailabilityProbe,
     StubClipRetrievalProvider,
     StubRenderPlanner,
     StubRenderOutputGenerator,
+    StubRenderReadinessChecker,
     StubClipDownloader,
     StubSceneTablePlanner,
     StubStockClipPlanner,
@@ -41,8 +43,10 @@ from backend.app.ports import (
     ClipRetrievalProvider,
     ClipDownloader,
     ClipSelector,
+    FfmpegAvailabilityProbe,
     RenderPlanner,
     RenderOutputGenerator,
+    RenderReadinessChecker,
     RunRepository,
     SceneTablePlanner,
     ScriptDraftGenerator,
@@ -72,6 +76,8 @@ def create_app(
     subtitle_composer: SubtitleComposer | None = None,
     render_planner: RenderPlanner | None = None,
     render_output_generator: RenderOutputGenerator | None = None,
+    render_readiness_checker: RenderReadinessChecker | None = None,
+    ffmpeg_availability_probe: FfmpegAvailabilityProbe | None = None,
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
 
@@ -115,6 +121,10 @@ def create_app(
         render_planner = StubRenderPlanner()
     if render_output_generator is None:
         render_output_generator = StubRenderOutputGenerator()
+    if render_readiness_checker is None:
+        render_readiness_checker = StubRenderReadinessChecker()
+    if ffmpeg_availability_probe is None:
+        ffmpeg_availability_probe = StubFfmpegAvailabilityProbe()
 
     lifespan = None
     if needs_database or needs_storage_root:
@@ -148,6 +158,8 @@ def create_app(
     app.state.subtitle_composer = subtitle_composer
     app.state.render_planner = render_planner
     app.state.render_output_generator = render_output_generator
+    app.state.render_readiness_checker = render_readiness_checker
+    app.state.ffmpeg_availability_probe = ffmpeg_availability_probe
     app.include_router(health_router)
     app.include_router(runs_router)
     app.include_router(assets_router)

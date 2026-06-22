@@ -8,6 +8,7 @@ from backend.app.domain import (
     AssetKind,
     ClipCandidate,
     DownloadedClip,
+    RenderReadinessReport,
     RenderSpec,
     RenderPlanSegment,
     RenderOutputManifest,
@@ -23,9 +24,11 @@ from backend.app.ports import (
     ClipRetrievalProvider,
     ClipDownloader,
     ClipSelector,
+    FfmpegAvailabilityProbe,
     Renderer,
     RenderPlanner,
     RenderOutputGenerator,
+    RenderReadinessChecker,
     SceneTablePlanner,
     ScriptDraftGenerator,
     StockClipPlanner,
@@ -360,6 +363,49 @@ class FakeRenderOutputGenerator(RenderOutputGenerator):
             output_uri=None,
             generation_reason="fake_generation",
         )
+
+
+class FakeRenderReadinessChecker(RenderReadinessChecker):
+    def __init__(self, report: RenderReadinessReport) -> None:
+        self._report = report
+        self.calls: list[
+            tuple[
+                str,
+                int,
+                tuple[RenderPlanSegment, ...],
+                RenderOutputManifest | None,
+                str,
+            ]
+        ] = []
+
+    def check(
+        self,
+        render_plan_asset_id: str,
+        render_plan_version: int,
+        render_plan_segments: Sequence[RenderPlanSegment],
+        render_output: RenderOutputManifest | None,
+        ffmpeg_availability: str,
+    ) -> RenderReadinessReport:
+        self.calls.append(
+            (
+                render_plan_asset_id,
+                render_plan_version,
+                tuple(render_plan_segments),
+                render_output,
+                ffmpeg_availability,
+            )
+        )
+        return self._report
+
+
+class FakeFfmpegAvailabilityProbe(FfmpegAvailabilityProbe):
+    def __init__(self, availability: str = "not_checked") -> None:
+        self.availability = availability
+        self.call_count = 0
+
+    def check(self) -> str:
+        self.call_count += 1
+        return self.availability
 
 
 class FakeTTSProvider(TTSProvider):

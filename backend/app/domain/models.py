@@ -24,6 +24,7 @@ class AssetKind(str, Enum):
     SUBTITLE = "subtitle"
     RENDER_PLAN = "render_plan"
     RENDER_OUTPUT = "render_output"
+    RENDER_READINESS = "render_readiness"
     RENDER = "render"
 
 
@@ -221,6 +222,35 @@ class RenderOutputManifest:
     segment_count: int
     estimated_duration_seconds: float
     output_uri: str | None
+    generation_reason: str
+
+
+@dataclass(frozen=True)
+class RenderInputReadiness:
+    order_index: int
+    scene_id: str
+    role: str
+    uri: str
+    scheme: str
+    required: bool
+    status: str
+    blocker_reason: str | None
+
+
+@dataclass(frozen=True)
+class RenderReadinessReport:
+    status: str
+    render_plan_asset_id: str
+    render_plan_version: int
+    render_output_asset_id: str | None
+    render_output_version: int | None
+    ffmpeg_availability: str
+    segment_count: int
+    materialized_required_count: int
+    total_required_count: int
+    inputs: tuple[RenderInputReadiness, ...]
+    blocker_summary: tuple[str, ...]
+    warnings: tuple[str, ...]
     generation_reason: str
 
 

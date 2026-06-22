@@ -18,6 +18,7 @@ from backend.app.application.use_cases import (
     CreateDownloadedClipSet,
     CreateRenderPlan,
     CreateRenderOutput,
+    CreateRenderReadiness,
     CreateSceneTable,
     CreateSelectedClipSet,
     CreateScriptDraft,
@@ -30,6 +31,7 @@ from backend.app.application.use_cases import (
     GenerateSceneTable,
     GenerateRenderPlan,
     GenerateRenderOutput,
+    GenerateRenderReadiness,
     GenerateScriptDraft,
     GenerateStockPlan,
     GenerateSubtitles,
@@ -39,6 +41,7 @@ from backend.app.application.use_cases import (
     GetLatestDownloadedClipSet,
     GetLatestRenderPlan,
     GetLatestRenderOutput,
+    GetLatestRenderReadiness,
     GetLatestSceneTable,
     GetLatestSelectedClipSet,
     GetLatestScriptDraft,
@@ -50,6 +53,7 @@ from backend.app.application.use_cases import (
     ListDownloadedClipSets,
     ListRenderPlans,
     ListRenderOutputs,
+    ListRenderReadiness,
     ListSceneTables,
     ListSelectedClipSets,
     ListScriptDrafts,
@@ -60,6 +64,7 @@ from backend.app.application.use_cases import (
     RetrieveClipCandidates,
     RenderPlan,
     RenderOutput,
+    RenderReadiness,
     SceneTable,
     SelectClips,
     SelectedClipSet,
@@ -71,8 +76,10 @@ from backend.app.application.use_cases import (
 from backend.app.domain import (
     ClipCandidate,
     DownloadedClip,
+    RenderInputReadiness,
     RenderPlanSegment,
     RenderOutputManifest,
+    RenderReadinessReport,
     SceneSpec,
     SelectedClip,
     StockQuerySpec,
@@ -85,8 +92,10 @@ from backend.app.ports import (
     ClipRetrievalProvider,
     ClipDownloader,
     ClipSelector,
+    FfmpegAvailabilityProbe,
     RenderPlanner,
     RenderOutputGenerator,
+    RenderReadinessChecker,
     RunRepository,
     SceneTablePlanner,
     ScriptDraftGenerator,
@@ -171,6 +180,18 @@ def get_render_planner(request: Request) -> RenderPlanner:
 def get_render_output_generator(request: Request) -> RenderOutputGenerator:
     """Resolve the render-output generator wired at composition time."""
     return request.app.state.render_output_generator
+
+
+def get_render_readiness_checker(request: Request) -> RenderReadinessChecker:
+    """Resolve the render-readiness checker wired at composition time."""
+    return request.app.state.render_readiness_checker
+
+
+def get_ffmpeg_availability_probe(
+    request: Request,
+) -> FfmpegAvailabilityProbe:
+    """Resolve the metadata-only availability probe."""
+    return request.app.state.ffmpeg_availability_probe
 
 
 class CreateScriptDraftRequest(BaseModel):
@@ -681,6 +702,85 @@ class RenderOutputResponse(BaseModel):
             manifest=RenderOutputManifestModel.from_domain(
                 render_output.manifest
             ),
+        )
+
+
+class RenderInputReadinessModel(BaseModel):
+    order_index: int
+    scene_id: str
+    role: str
+    uri: str
+    scheme: str
+    required: bool
+    status: str
+    blocker_reason: str | None
+
+    @classmethod
+    def from_domain(
+        cls, readiness: RenderInputReadiness
+    ) -> "RenderInputReadinessModel":
+        return cls(
+            order_index=readiness.order_index,
+            scene_id=readiness.scene_id,
+            role=readiness.role,
+            uri=readiness.uri,
+            scheme=readiness.scheme,
+            required=readiness.required,
+            status=readiness.status,
+            blocker_reason=readiness.blocker_reason,
+        )
+
+
+class RenderReadinessReportModel(BaseModel):
+    status: str
+    render_plan_asset_id: str
+    render_plan_version: int
+    render_output_asset_id: str | None
+    render_output_version: int | None
+    ffmpeg_availability: str
+    segment_count: int
+    materialized_required_count: int
+    total_required_count: int
+    inputs: list[RenderInputReadinessModel]
+    blocker_summary: list[str]
+    warnings: list[str]
+    generation_reason: str
+
+    @classmethod
+    def from_domain(
+        cls, report: RenderReadinessReport
+    ) -> "RenderReadinessReportModel":
+        return cls(
+            status=report.status,
+            render_plan_asset_id=report.render_plan_asset_id,
+            render_plan_version=report.render_plan_version,
+            render_output_asset_id=report.render_output_asset_id,
+            render_output_version=report.render_output_version,
+            ffmpeg_availability=report.ffmpeg_availability,
+            segment_count=report.segment_count,
+            materialized_required_count=report.materialized_required_count,
+            total_required_count=report.total_required_count,
+            inputs=[
+                RenderInputReadinessModel.from_domain(item)
+                for item in report.inputs
+            ],
+            blocker_summary=list(report.blocker_summary),
+            warnings=list(report.warnings),
+            generation_reason=report.generation_reason,
+        )
+
+
+class RenderReadinessResponse(BaseModel):
+    asset: AssetResponse
+    report: RenderReadinessReportModel
+
+    @classmethod
+    def from_render_readiness(
+        cls, readiness: RenderReadiness
+    ) -> "RenderReadinessResponse":
+        return cls(
+            asset=AssetResponse.from_asset(readiness.asset),
+            report=RenderReadinessReportModel.from_domain(readiness.report),
         )
 
 
@@ -1326,3 +1426,64 @@ def get_latest_render_output(
         asset_repository, storage
     ).execute(run_id)
     return RenderOutputResponse.from_render_output(render_output)
+
+
+@router.post(
+    "/{run_id}/render-readiness/generate",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AssetResponse,
+)
+def generate_render_readiness(
+    run_id: str,
+    run_repository: RunRepository = Depends(get_run_repository),
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+    render_readiness_checker: RenderReadinessChecker = Depends(
+        get_render_readiness_checker
+    ),
+    ffmpeg_availability_probe: FfmpegAvailabilityProbe = Depends(
+        get_ffmpeg_availability_probe
+    ),
+) -> AssetResponse:
+    create_render_readiness = CreateRenderReadiness(
+        run_repository, asset_repository, storage
+    )
+    asset = GenerateRenderReadiness(
+        run_repository,
+        render_readiness_checker,
+        ffmpeg_availability_probe,
+        GetLatestRenderPlan(asset_repository, storage),
+        GetLatestRenderOutput(asset_repository, storage),
+        create_render_readiness,
+    ).execute(run_id)
+    return AssetResponse.from_asset(asset)
+
+
+@router.get("/{run_id}/render-readiness", response_model=list[AssetResponse])
+def list_render_readiness(
+    run_id: str,
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+) -> list[AssetResponse]:
+    assets = ListRenderReadiness(asset_repository).execute(run_id)
+    return [AssetResponse.from_asset(asset) for asset in assets]
+
+
+@router.get(
+    "/{run_id}/render-readiness/latest",
+    response_model=RenderReadinessResponse,
+)
+def get_latest_render_readiness(
+    run_id: str,
+    asset_repository: VersionedAssetRepository = Depends(
+        get_versioned_asset_repository
+    ),
+    storage: StoragePort = Depends(get_storage),
+) -> RenderReadinessResponse:
+    readiness = GetLatestRenderReadiness(
+        asset_repository, storage
+    ).execute(run_id)
+    return RenderReadinessResponse.from_render_readiness(readiness)

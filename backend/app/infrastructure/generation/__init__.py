@@ -18,6 +18,12 @@ from backend.app.infrastructure.generation.stub_render_planner import (
 from backend.app.infrastructure.generation.stub_render_output_generator import (
     StubRenderOutputGenerator,
 )
+from backend.app.infrastructure.generation.stub_render_readiness_checker import (
+    StubRenderReadinessChecker,
+)
+from backend.app.infrastructure.generation.stub_ffmpeg_availability_probe import (
+    StubFfmpegAvailabilityProbe,
+)
 from backend.app.infrastructure.generation.stub_stock_clip_planner import (
     StubStockClipPlanner,
 )
@@ -38,11 +44,13 @@ __all__ = [
     "DeterministicClipSelector",
     "DeterministicVideoAssemblyPlanner",
     "EchoScriptDraftGenerator",
+    "StubFfmpegAvailabilityProbe",
     "StubClipRetrievalProvider",
     "StubClipDownloader",
     "StubSceneTablePlanner",
     "StubRenderPlanner",
     "StubRenderOutputGenerator",
+    "StubRenderReadinessChecker",
     "StubStockClipPlanner",
     "StubSubtitleComposer",
     "StubVoiceoverGenerator",
